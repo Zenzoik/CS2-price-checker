@@ -38,7 +38,7 @@ A Python script that automatically tracks CS2 (Counter-Strike 2) case prices fro
 
 ### Step 1: Copy the Google Sheets Template
 
-1. Open the [Template Spreadsheet]([https://docs.google.com/spreadsheets/d/your-template-id](https://docs.google.com/spreadsheets/d/1eShxZQ34gI8dir-6LISCNX-omjF8A2XQJb9vL1jh_bs/edit?usp=sharing))
+1. Open the [Sheet template](https://docs.google.com/spreadsheets/d/1eShxZQ34gI8dir-6LISCNX-omjF8A2XQJb9vL1jh_bs/edit?usp=sharing).
 2. Click **File → Make a copy**
 3. Rename it("Template_CS_2_cases")
 
