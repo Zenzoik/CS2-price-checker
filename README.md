@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>English</strong> •
-  <a href="README_RU.md">Русский</a>
+  <a href="README_UA.md">Українська</a>
 </p>
 
 A Python script that automatically tracks CS2 (Counter-Strike 2) case prices from Steam Market and updates them in a Google Sheets spreadsheet.
