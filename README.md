@@ -5,167 +5,139 @@
   <a href="README_UA.md">Українська</a>
 </p>
 
-A Python script that automatically tracks CS2 (Counter-Strike 2) case prices from Steam Market and updates them in a Google Sheets spreadsheet.
+Tracks CS2 (Counter-Strike 2) Steam Community Market prices and keeps the **Now price** column of your Google Sheets portfolio up to date. The sheet's own formulas compute totals and profit/loss.
 
 ## Features
 
-- 🔍 **Search and Add Cases**: Find cases by name and add them to your tracking list
-- 📊 **Automatic Price Updates**: Updates current market prices every 5 minutes
-- 📈 **Profit Calculation**: Calculate potential profits based on buy/sell prices
-- 🛡️ **Rate Limiting Protection**: Built-in protection against Steam API rate limits
-- 🌍 **Universal Compatibility**: Works with Google Sheets in any language/locale
+- 🔍 **Search and add items**: pick the exact item from the market search results. Containers (cases, capsules) are searched first, then all items.
+- 📊 **Price updates**: once (handy for cron / Task Scheduler) or in a loop.
+- 💱 **Your currency**: prices are written in the currency you configure (UAH, USD, EUR, …), and the tool never silently mixes currencies.
+- ⚡ **Light on quotas**: one Steam request per item and a single Google Sheets write per update. Handles Steam rate limits with backoff.
+- 📈 **Optional price history**: every update can append rows to a *History* tab, ready for charts.
 
-## Prerequisites
+## Requirements
 
-- Python 3.7+
-- Google account
-- Google Cloud Platform account (free tier is sufficient)
+- Python 3.10+
+- A Google account and a Google Cloud project (the free tier is enough)
 
 ## Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/cs2-case-tracker.git
-   cd cs2-case-tracker
-   ```
+```bash
+git clone https://github.com/Zenzoik/CS2-price-checker.git
+cd CS2-price-checker
+pip install -r requirements.txt
+```
 
-2. **Install required packages**
-   ```bash
-   pip install -r requirements.txt
-   ```
+You can also run `pip install .`, which adds a `cs2tracker` command to your PATH.
 
-## Setup Instructions
+## Setup
 
-### Step 1: Copy the Google Sheets Template
+### 1. Copy the sheet template
 
-1. Open the [Sheet template](https://docs.google.com/spreadsheets/d/1eShxZQ34gI8dir-6LISCNX-omjF8A2XQJb9vL1jh_bs/edit?usp=sharing).
-2. Click **File → Make a copy**
-3. Rename it("Template_CS_2_cases")
+1. Open the [sheet template](https://docs.google.com/spreadsheets/d/1eShxZQ34gI8dir-6LISCNX-omjF8A2XQJb9vL1jh_bs/edit?usp=sharing).
+2. **File → Make a copy**, and name it `Template_CS_2_cases`. Any other name works if you set `spreadsheet` in the config.
 
-### Step 2: Create Google Cloud Service Account
+### 2. Create a Google service account
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable the **Google Sheets API** and **Google Drive API**:
-   - Go to **APIs & Services → Library**
-   - Search for "Google Sheets API" and enable it
-   - Search for "Google Drive API" and enable it
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project or pick an existing one.
+2. Under **APIs & Services → Library**, enable the **Google Sheets API** and the **Google Drive API**.
+3. Under **APIs & Services → Credentials**, choose **Create Credentials → Service Account**. Give it any name, skip the roles, then click **Done**.
+4. Open the service account, go to **Keys → Add Key → Create new key → JSON**, and save the file as `service-account.json` in the project folder.
 
-### Step 3: Create Service Account Credentials
+### 3. Share the sheet with the service account
 
-1. Go to **APIs & Services → Credentials**
-2. Click **Create Credentials → Service Account**
-3. Fill in the service account details:
-   - **Name**: `cs2-tracker-bot`
-   - **Description**: `Service account for CS2 case price tracking`
-4. Click **Create and Continue**
-5. Skip role assignment (click **Continue**)
-6. Click **Done**
+Open your copy of the sheet, click **Share**, paste the service account e-mail (`client_email` in the JSON file, like `name@project.iam.gserviceaccount.com`), give it **Editor** access and untick "Notify people".
 
-### Step 4: Generate and Download JSON Key
+### 4. (Optional) Configure
 
-1. Find your newly created service account in the list
-2. Click on the service account email
-3. Go to the **Keys** tab
-4. Click **Add Key → Create new key**
-5. Select **JSON** format
-6. Click **Create**
-7. The JSON file will download automatically
-8. **Rename the file to `service-account.json`**
-9. **Move it to the same folder as your `main.py` script**
+Every setting has a default, so this step is optional. To change something:
 
-### Step 5: Grant Spreadsheet Access
+```bash
+cp config.example.toml config.toml
+```
 
-1. Open your copied Google Sheets spreadsheet
-2. Click the **Share** button
-3. Copy the service account email from the JSON file or Google cloud (format: `name@project-id.iam.gserviceaccount.com`)
-4. Paste the email in the share dialog
-5. Set permission to **Editor**
-6. **Uncheck "Notify people"**
-7. Click **Share**
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `credentials` | `service-account.json` | Path to the service account key |
+| `spreadsheet` | `Template_CS_2_cases` | Sheet title, full URL, or key |
+| `worksheet` | `0` | Tab index (0 = first) or tab name |
+| `name_column` / `price_column` | `A` / `C` | Columns with hash names and the price to write |
+| `currency` | `UAH` | ISO code, or `auto` for Steam's currency for your IP |
+| `price` | `sell` | `sell` = lowest listing, `buy` = highest buy order |
+| `interval_minutes` | `5` | Delay between updates in `watch` mode |
+| `request_delay` | `1.5` | Minimum seconds between Steam requests |
+| `history_worksheet` | *(off)* | Tab name for the price log, e.g. `History` |
 
 ## Usage
 
-### Running the Script
-
 ```bash
-python main.py
+python main.py                        # interactive menu: 1 add, 2 track, 3 exit, 4 update once
+python main.py add "breakout case"    # search and pick from the results
+python main.py add -y "chroma 2 case" "prisma case"   # take the top results
+python main.py search "sticker capsule" --all-items   # look without touching the sheet
+python main.py update                 # update prices once
+python main.py update --dry-run       # fetch and show, write nothing
+python main.py watch -i 10            # update every 10 minutes until Ctrl+C
 ```
 
-### Menu Options
+With `pip install .` you can type `cs2tracker …` instead of `python main.py …`.
 
-**Option 1: Add new cases to track**
-- Enter case names (e.g., "breakout case", "chroma case")
-- The script will search Steam Market and show you the exact match
-- Confirm each case before adding to your tracking list
+Fill in **Buy price (B)** and **Quantity (E)** yourself. The tool writes only **Hash name (A)** and **Now price (C)**.
 
-**Option 2: Start price tracking**
-- Automatically updates current market prices every 5 minutes
-- Prices are updated in column C (Now price)
-- Use `Ctrl+C` to stop tracking and return to menu
+### Running on a schedule
 
-**Option 3: Exit**
-- Safely exit the program
+`update` runs once and exits, so you don't have to keep a terminal open. Let the OS run it on a schedule instead:
 
-### Manual Data Entry
+- **macOS / Linux (cron)**: `*/15 * * * * cd /path/to/CS2-price-checker && /usr/bin/python3 main.py update >> tracker.log 2>&1`
+- **Windows**: in Task Scheduler, create a task that runs `python main.py update` with the project folder as *Start in*.
 
-After adding cases and running price tracking, manually fill in:
-- **Column B (Buy price)**: Your purchase price per case
-- **Column E (Quantity)**: Number of cases you own
+Exit codes: `0` means OK, `2` means some items failed or Steam was unreachable (see the log), `1` means a setup error (bad arguments, config, key, sheet access), and `130` means stopped with Ctrl+C.
 
-The spreadsheet will automatically calculate:
-- Total investment
-- Current total value
-- Profit/loss amounts and percentages
+Prices are written by item name, so sorting the sheet while an update runs is safe. If Steam is down, an update stops after 3 failed items in a row instead of waiting on every one.
 
-## Spreadsheet Structure
+## How prices are fetched
 
-| Column | Description |
-|--------|-------------|
-| A | Hash name (automatically filled) |
-| B | Buy price (manual entry) |
-| C | Now price (automatically updated) |
-| D | Price change % |
-| E | Quantity (manual entry) |
-| F | BUY TOTAL |
-| G | NOW TOTAL |
-| H | Profit/Loss |
-| I | Result % |
+Steam decides the currency of its order book from your **IP address**, and the order book is the only source of exact buy/sell prices. So:
+
+- If your configured `currency` matches Steam's currency for your IP, or you set `currency = "auto"`, prices come from the order book. That's one fast request per item, and both `price = "buy"` and `price = "sell"` work.
+- Otherwise the tool switches to Steam's *price overview* in your currency. This source has only the lowest listing (`price = "sell"`), and it is slower because Steam allows about 20 of these requests per minute.
+- `price = "buy"` with a mismatching currency stops with an explanation instead of writing prices in the wrong currency.
+
+`currency = "auto"` decides the currency anew on every run (it stays fixed within one `watch` session). If your IP can change, for example with a VPN, set an explicit currency so the sheet never mixes currencies.
+
+> **Upgrading from 1.x:** the old script wrote the highest buy order in UAH, and that no longer works: Steam removed the page data the script relied on. The new default is the lowest listing price in UAH. To keep buy-order prices, set `price = "buy"` together with the currency Steam uses for your IP. If that isn't UAH, the error message tells you which currency it is.
+
+## Sheet layout
+
+| Column | Content |
+|--------|---------|
+| A | Hash name *(written by the tool)* |
+| B | Buy price *(you)* |
+| C | Now price *(written by the tool)* |
+| D | Now price minus Steam fee |
+| E | Quantity *(you)* |
+| F–L | Totals and results (formulas) |
+| N–R | Portfolio summary (formulas) |
 
 ## Troubleshooting
 
-### Common Issues
+- **`Google service account key not found`**: put `service-account.json` next to `main.py`, or set `credentials` in `config.toml`. Both files are looked up in the current folder first, then next to `main.py`.
+- **`Cannot open spreadsheet`**: share the sheet with the service account e-mail (Editor), check the `spreadsheet` value, and check that the Sheets and Drive APIs are enabled. A URL or key works even when the title differs.
+- **`Steam serves order books in EUR for your IP…`**: see [How prices are fetched](#how-prices-are-fetched). Use `price = "sell"`, or set `currency` to the currency named in the message.
+- **`rate limited (429)`**: Steam limits requests per IP. The tool waits and retries. If it keeps happening, increase `request_delay` or update less often.
+- **`not found on Steam market`**: the name in column A must be the exact market hash name. Add items with `add` to get it right.
 
-**"No module named 'gspread'" error**
+## Development
+
 ```bash
-pip install gspread oauth2client requests
+pip install -e ".[dev]"
+pytest
 ```
 
-**"service-account.json not found" error**
-- Ensure the JSON file is in the same directory as `main.py`
-- Check the filename is exactly `service-account.json`
+## Legal notice
 
-**"Permission denied" error**
-- Verify you shared the spreadsheet with the service account email
-- Check that the service account has Editor permissions
-
-**"Rate limited" messages**
-- This is normal - the script automatically handles Steam API rate limits
-- Wait times will be shown in the console
-
-**"Could not find item_nameid" error**
-- The case name might be incorrect
-- Try searching with the exact name from Steam Market
-
-## Legal Notice
-
-This tool is for educational and personal use only. Please respect Steam's Terms of Service and rate limits. The authors are not responsible for any account restrictions or other consequences of using this tool.
-
+This tool is for personal and educational use. It relies on unofficial Steam endpoints that can change at any time. Respect Steam's Terms of Service and rate limits.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-⭐ **Star this repository if you find it helpful!**
+MIT, see [LICENSE](LICENSE).

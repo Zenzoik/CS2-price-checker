@@ -1,0 +1,36 @@
+# Copy to config.toml and adjust. Every key is optional; defaults are shown.
+
+# Google service account key (relative paths are relative to this file).
+credentials = "service-account.json"
+
+# Spreadsheet title, full URL, or key (the long id from the URL).
+spreadsheet = "Template_CS_2_cases"
+
+# Tab with the portfolio: index (0 = first tab) or tab name.
+worksheet = 0
+
+# Columns (letters) with the item hash names and the "Now price" to write.
+# The template uses A and C; a sheet with a short-name column first would use B and D.
+name_column = "A"
+price_column = "C"
+
+# Currency to write prices in: ISO code ("UAH", "USD", "EUR", ...) or "auto"
+# (whatever Steam picks for your IP address, decided anew on every run – prefer an
+# explicit code if you use a VPN).
+currency = "UAH"
+
+# Which price goes into the "Now price" column:
+#   "sell" - lowest listing, the "Starting at" price on the market page.
+#   "buy"  - highest buy order, i.e. what you get selling instantly. Only available
+#            when `currency` is the currency Steam uses for your IP (or "auto").
+price = "sell"
+
+# Minutes between updates in `watch` mode (1-10080).
+interval_minutes = 5
+
+# Minimum seconds between Steam requests (0.5-600).
+request_delay = 1.5
+
+# If set, every update also appends (time, item, price, currency) rows to this tab,
+# which is created on first use. Handy for charts.
+# history_worksheet = "History"

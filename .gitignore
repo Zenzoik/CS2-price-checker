@@ -55,5 +55,9 @@ Thumbs.db
 *.log
 
 # Local configuration
-config.ini
+config.toml
 .env
+
+# Tooling
+.venv/
+.pytest_cache/
