@@ -1,6 +1,6 @@
 # Ideas
 
-Possible features we have researched but not built. Decide on them from user feedback.
+Possible features we have researched but not built. Decide on them from user feedback. The plan with priorities is in [roadmap.md](roadmap.md).
 
 ## Instant price estimates after an inventory import
 
