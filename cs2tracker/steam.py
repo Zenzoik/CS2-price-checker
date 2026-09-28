@@ -30,6 +30,9 @@ log = logging.getLogger(__name__)
 COMMUNITY_URL = "https://steamcommunity.com"
 MARKET_URL = f"{COMMUNITY_URL}/market"
 CS2_APPID = 730
+# The inventory endpoint answers 429 to requests' default User-Agent (and to a
+# bare product name) but serves one that says who is asking.
+COMMUNITY_HEADERS = {"User-Agent": "cs2tracker/2.0 (+https://github.com/Zenzoik/CS2-price-checker)"}
 # Steam's "Container" type: cases, capsules, souvenir packages, etc.
 CONTAINER_TAG = "tag_CSGO_Type_WeaponCase"
 
@@ -277,7 +280,8 @@ class SteamMarket:
         if not _VANITY_RE.match(name):
             raise ProfileNotFound(name)
         # Interactive and strictly limited by Steam: no backoff, the user retries.
-        resp = self._get(f"{COMMUNITY_URL}/id/{name}/", {"xml": 1}, self.request_delay, 0)
+        resp = self._get(f"{COMMUNITY_URL}/id/{name}/", {"xml": 1}, self.request_delay, 0,
+                         headers=COMMUNITY_HEADERS)
         m = re.search(r"<steamID64>(7656119\d{10})</steamID64>", resp.text)
         if not m:
             raise ProfileNotFound(name)
@@ -296,7 +300,7 @@ class SteamMarket:
         amounts: dict[tuple[str, str], int] = {}
         for _ in range(max_pages):
             try:
-                data = self._get_json(url, params, max_retries=0)
+                data = self._get_json(url, params, max_retries=0, headers=COMMUNITY_HEADERS)
             except SteamHTTPError as e:
                 if e.status in (401, 403):
                     raise PrivateInventory(steamid) from e
@@ -341,12 +345,13 @@ class SteamMarket:
     # -- HTTP plumbing ------------------------------------------------------
 
     def _get_json(self, url: str, params: dict, *, min_interval: float | None = None,
-                  max_retries: int | None = None, not_found_on_500: str | None = None):
+                  max_retries: int | None = None, not_found_on_500: str | None = None,
+                  headers: dict | None = None):
         resp = self._get(
             url, params,
             min_interval if min_interval is not None else self.request_delay,
             max_retries if max_retries is not None else self.max_retries,
-            not_found_on_500,
+            not_found_on_500, headers=headers,
         )
         try:
             return resp.json()
@@ -354,14 +359,17 @@ class SteamMarket:
             raise SteamError(f"non-JSON response from {url}") from e
 
     def _get(self, url: str, params: dict, min_interval: float, max_retries: int,
-             not_found_on_500: str | None = None) -> requests.Response:
+             not_found_on_500: str | None = None, *, headers: dict | None = None) -> requests.Response:
         delay = self.backoff
         attempt = 0
         while True:
             self._throttle(min_interval)
             rate_limited = False
             try:
-                resp = self.session.get(url, params=params, timeout=self.timeout)
+                if headers:
+                    resp = self.session.get(url, params=params, timeout=self.timeout, headers=headers)
+                else:
+                    resp = self.session.get(url, params=params, timeout=self.timeout)
             except requests.RequestException as e:
                 error = f"network error: {e}"
             else:

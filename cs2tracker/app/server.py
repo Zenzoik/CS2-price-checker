@@ -255,6 +255,7 @@ async def inventory(request: web.Request) -> web.Response:
     except PrivateInventory as e:
         raise ApiError(403, "inventory_private", "This inventory is private") from e
     except RateLimited as e:
+        log.warning("Steam rate-limited an inventory lookup: %s", e)
         raise ApiError(429, "steam_rate", "Steam is limiting inventory requests, try later") from e
     except SteamBusy as e:
         raise ApiError(503, "busy", "Steam is busy, try again") from e

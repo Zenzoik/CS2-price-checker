@@ -215,6 +215,8 @@ def test_inventory_aggregates_filters_and_pages():
     assert [(i.hash_name, i.qty, i.container) for i in items] == [
         ("Shadow Case", 5, True), ("AK-47 | Redline (Field-Tested)", 1, False), ("New Skin", 1, False)]
     assert market.session.calls[1][1]["start_assetid"] == "42"
+    # Steam rate-limits requests' default User-Agent on this endpoint.
+    assert market.session.last_headers["User-Agent"].startswith("cs2tracker/")
 
 
 @pytest.mark.parametrize("status, error", [(403, PrivateInventory), (400, ProfileNotFound)])

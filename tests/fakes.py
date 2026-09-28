@@ -25,8 +25,9 @@ class FakeSession:
         self.headers: dict = {}
         self.calls: list[tuple[str, dict]] = []
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, headers=None):
         self.calls.append((url, params or {}))
+        self.last_headers = headers or {}
         for key, queue in self.routes.items():
             if key in url:
                 item = queue.pop(0) if len(queue) > 1 else queue[0]
