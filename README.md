@@ -111,7 +111,7 @@ Besides the Google Sheet, the tracker can run as a Telegram bot with a Mini App.
 
 On start the bot sets its menu button to open the app, and it answers any message with an **Open portfolio** button. The app speaks English, Russian and Ukrainian, following the user's Telegram language.
 
-All prices use one currency (`CS2BOT_CURRENCY`, default UAH). The database remembers it and refuses to start with a different one, so prices never get mixed. The [same rules](#how-prices-are-fetched) apply for which currencies and price kinds work from your server's IP.
+All prices use one currency (`CS2BOT_CURRENCY`, default UAH). The database remembers it and refuses to start with a different one, so prices never get mixed. Large imports are priced one item at a time (about 40 per minute) while Home shows the progress; ideas for faster estimates are in [docs/ideas.md](docs/ideas.md). The [same rules](#how-prices-are-fetched) apply for which currencies and price kinds work from your server's IP.
 
 ## How prices are fetched
 

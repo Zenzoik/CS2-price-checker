@@ -8,7 +8,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from cs2tracker.app.auth import AuthError, sign_init_data, validate_init_data
 from cs2tracker.app.db import MAX_QTY, QuantityLimit, Store, StoreError
 from cs2tracker.app.prices import PriceService, SteamBusy
-from cs2tracker.app.server import CSP, INVENTORY_LIMITER, create_app
+from cs2tracker.app.server import CSP, INVENTORY_LIMITER, VERSION, create_app
 from cs2tracker.app.settings import AppSettings, SettingsError, load_app_settings
 from cs2tracker.app.telegram import BotApiError, TelegramBot
 from cs2tracker.app.prices import InventoryService
@@ -243,7 +243,9 @@ def test_api_private_bot(tmp_path):
 def test_api_add_edit_delete_flow(tmp_path):
     async def scenario(client, store, market):
         r = await client.get("/api/portfolio", headers=auth())
-        assert await r.json() == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": []}
+        body = await r.json()
+        assert body.pop("version")
+        assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": []}
 
         found = await (await client.get("/api/search", params={"q": "breakout"}, headers=auth())).json()
         assert found["results"] == [{"hash_name": CASE, "name": CASE, "icon": "abc", "held": False}]
@@ -815,3 +817,14 @@ def test_rate_limited_source_sits_out_a_while(tmp_path):
     now[0] += 600  # cooldown over and prices due again
     asyncio.run(prices.refresh())
     assert len(overview.calls) > tried
+
+
+def test_index_pins_asset_versions(tmp_path):
+    async def scenario(client, store, market):
+        html = await (await client.get("/")).text()
+        version = client.server.app[VERSION]
+        assert f"/static/app.js?v={version}" in html and f'content="{version}"' in html
+        assert "{{version}}" not in html
+        p = await (await client.get("/api/portfolio", headers=auth())).json()
+        assert p["version"] == version
+    run_api(tmp_path, scenario)

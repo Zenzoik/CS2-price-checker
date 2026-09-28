@@ -416,10 +416,25 @@
   }
 
   let pendingPoll = 0;
+  const appVersion = (document.querySelector('meta[name="app-version"]') || {}).content || "";
+
+  // A deploy happened while the app was open: reload into the new version, but
+  // only on Home and never twice for the same version (no reload loops).
+  function reloadIfOutdated(version) {
+    if (!version || !appVersion || version === appVersion || appVersion.includes("{")) return;
+    if (state.screen !== "home" || state.busy || imp.busy) return;
+    try {
+      if (sessionStorage.getItem("reloadedFor") === version) return;
+      sessionStorage.setItem("reloadedFor", version);
+    } catch (e) { /* storage blocked: reload once anyway */ }
+    window.location.reload();
+  }
 
   async function loadPortfolio() {
     try {
-      setPortfolio(await api("/api/portfolio"));
+      const p = await api("/api/portfolio");
+      setPortfolio(p);
+      reloadIfOutdated(p.version);
     } catch (e) {
       if (state.portfolio) state.stale = e;
       else state.loadError = e;
@@ -1095,9 +1110,14 @@
   // Pulling the list down should scroll it, not minimise the app.
   call(() => tg.disableVerticalSwipes(), "7.7");
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") back(); });
+  // Home keeps itself current: prices change in the background on the server.
+  // The request only reads the database, so polling is cheap.
   setInterval(() => {
     if (state.screen === "home" && document.visibilityState === "visible") loadPortfolio();
-  }, 120000);
+  }, 30000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.screen === "home") loadPortfolio();
+  });
 
   showHome();
   tg.ready();

@@ -6,6 +6,7 @@ Every /api request carries the Mini App's signed init data in
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -47,7 +48,19 @@ CSP = "; ".join([
     "form-action 'none'",
 ])
 
+def static_version() -> str:
+    """Short hash of the front end, so a deploy changes every URL that loads it."""
+    digest = hashlib.sha256()
+    for path in sorted(STATIC_DIR.iterdir()):
+        if path.is_file():
+            digest.update(path.name.encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
 SETTINGS = web.AppKey("settings", AppSettings)
+VERSION = web.AppKey("version", str)
+INDEX_HTML = web.AppKey("index_html", str)
 STORE = web.AppKey("store", Store)
 PRICES = web.AppKey("prices", PriceService)
 LIMITER = web.AppKey("limiter", object)
@@ -143,8 +156,8 @@ async def authenticate(request: web.Request, handler):
 
 # -- handlers -------------------------------------------------------------------
 
-async def index(request: web.Request) -> web.FileResponse:
-    return web.FileResponse(STATIC_DIR / "index.html")
+async def index(request: web.Request) -> web.Response:
+    return web.Response(text=request.app[INDEX_HTML], content_type="text/html")
 
 
 async def portfolio(request: web.Request) -> web.Response:
@@ -154,6 +167,7 @@ async def portfolio(request: web.Request) -> web.Response:
     stamps = [h.price_updated for h in holdings if h.price_updated is not None]
     return web.json_response({
         "currency": store.currency,
+        "version": request.app[VERSION],  # an open app reloads itself when this changes
         "price_kind": settings.price,
         "updated_at": min(stamps) if stamps else None,
         "items": [_holding_json(h) for h in holdings],
@@ -400,6 +414,12 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
                inventories: InventoryService | None = None) -> web.Application:
     app = web.Application(middlewares=[security_headers, authenticate], client_max_size=MAX_BODY)
     app[SETTINGS] = settings
+    # Versioned asset URLs: Telegram's WebView caches hard, a new URL cannot be stale.
+    app[VERSION] = version = static_version()
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    app[INDEX_HTML] = (html.replace("/static/app.js", f"/static/app.js?v={version}")
+                           .replace("/static/style.css", f"/static/style.css?v={version}")
+                           .replace("{{version}}", version))
     app[STORE] = store
     app[PRICES] = prices
     app[LIMITER] = RateLimiter(STEAM_CALLS_PER_MINUTE)
