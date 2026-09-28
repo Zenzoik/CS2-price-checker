@@ -39,8 +39,12 @@ async def serve() -> None:
     # A user waits on these calls, so give up quickly instead of CLI-style backoff.
     market = SteamMarket(request_delay=settings.request_delay, max_retries=2, server_retries=1,
                          backoff=5.0, max_backoff=20.0, timeout=10.0)
+    # A second client for priceoverview: its own Steam limit (about 20/min), used
+    # alongside the order book so large imports get priced faster.
+    overview = SteamMarket(request_delay=settings.request_delay, max_retries=1, server_retries=1,
+                           backoff=5.0, max_backoff=20.0, timeout=10.0)
     prices = PriceService(store, market, currency=settings.currency, kind=settings.price,
-                          refresh_minutes=settings.refresh_minutes)
+                          refresh_minutes=settings.refresh_minutes, overview_market=overview)
     # Inventories get their own client: separate throttle, lock and Steam limits.
     inventories = InventoryService(SteamMarket(request_delay=settings.request_delay, max_retries=0,
                                                server_retries=0, timeout=15.0))

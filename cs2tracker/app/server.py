@@ -392,6 +392,7 @@ def _holding_json(h) -> dict:
         "qty": h.qty,
         "buy_price": _money(h.buy_cents),
         "price": _money(h.price_cents),
+        "pending": h.price_checked is None,
     }
 
 

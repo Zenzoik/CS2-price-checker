@@ -73,6 +73,7 @@ class Holding:
     buy_cents: int | None
     price_cents: int | None
     price_updated: float | None
+    price_checked: float | None = None  # None: never tried yet (e.g. just imported)
 
 
 class Store:
@@ -135,7 +136,7 @@ class Store:
     def holdings(self, user_id: int) -> list[Holding]:
         rows = self.conn.execute(
             """SELECT h.hash_name, COALESCE(i.name, h.hash_name) AS name, i.icon, h.qty, h.buy_cents,
-                      p.cents AS price_cents, p.updated_at AS price_updated
+                      p.cents AS price_cents, p.updated_at AS price_updated, p.checked_at AS price_checked
                FROM holdings h
                LEFT JOIN items i ON i.hash_name = h.hash_name
                LEFT JOIN prices p ON p.hash_name = h.hash_name

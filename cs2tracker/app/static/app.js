@@ -44,6 +44,7 @@
       has: "You have {qty} at {price} each.",
       becomes: "Will become {qty} at {price} each.",
       removeFull: "Remove from portfolio",
+      pricing: "Fetching prices: {n} of {total}",
       removeConfirm: "Remove {name} from the portfolio?",
       justNow: "just now", updated: "updated {ago}", unpriced: "{n} without a price",
       kind_sell: "Lowest Steam listing", kind_buy: "Highest Steam buy order",
@@ -89,6 +90,7 @@
       has: "У вас {qty} шт. по {price}.",
       becomes: "Станет {qty} шт. по {price}.",
       removeFull: "Убрать из портфеля",
+      pricing: "Получаем цены: {n} из {total}",
       removeConfirm: "Убрать {name} из портфеля?",
       justNow: "только что", updated: "обновлено {ago}", unpriced: "без цены: {n}",
       kind_sell: "Мин. цена продажи Steam", kind_buy: "Макс. заявка на покупку Steam",
@@ -134,6 +136,7 @@
       has: "У вас {qty} шт. по {price}.",
       becomes: "Стане {qty} шт. по {price}.",
       removeFull: "Прибрати з портфеля",
+      pricing: "Отримуємо ціни: {n} з {total}",
       removeConfirm: "Прибрати {name} з портфеля?",
       justNow: "щойно", updated: "оновлено {ago}", unpriced: "без ціни: {n}",
       kind_sell: "Мін. ціна продажу Steam", kind_buy: "Макс. заявка на купівлю Steam",
@@ -412,6 +415,8 @@
     return ((state.portfolio && state.portfolio.items) || []).find((i) => i.hash_name === hashName) || null;
   }
 
+  let pendingPoll = 0;
+
   async function loadPortfolio() {
     try {
       setPortfolio(await api("/api/portfolio"));
@@ -420,6 +425,14 @@
       else state.loadError = e;
     }
     if (state.screen === "home") showHome({ keepScroll: true });
+  }
+
+  // Right after an import prices arrive one by one: follow them closely.
+  function followPendingPrices() {
+    clearTimeout(pendingPoll);
+    pendingPoll = setTimeout(() => {
+      if (state.screen === "home" && document.visibilityState === "visible") loadPortfolio();
+    }, 3000);
   }
 
   function back() {
@@ -486,13 +499,15 @@
     }
 
     const { value, trackedValue, pricedCost, cost, unpriced, noBuy, tracked } = totals(p.items);
+    const pending = p.items.filter((i) => i.pending).length;
+    if (pending) followPendingPrices();
     const pnl = trackedValue - pricedCost;
     const worth = (it) => (it.price == null ? -1 : net(it.price) * it.qty);
     const items = [...p.items].sort((a, b) => worth(b) - worth(a));
 
     const foot = [`${t(`kind_${p.price_kind}`)}, ${t("afterFee")}`];
     if (p.updated_at) foot.push(t("updated", { ago: ago(p.updated_at) }));
-    if (unpriced) foot.push(t("unpriced", { n: unpriced }));
+    if (unpriced - pending > 0) foot.push(t("unpriced", { n: unpriced - pending }));
 
     mount([
       h("section", { class: "hero" },
@@ -505,11 +520,21 @@
         (pricedCost > 0 || cost > 0) && h("div", { class: "hero-sub hint num" }, `${t("invested")} ${money(pricedCost)}`,
           cost > pricedCost && ` ${t("unpricedCost", { cost: money(cost - pricedCost) })}`),
         noBuy > 0 && pricedCost === 0 && h("div", { class: "hero-sub hint" }, t("withoutBuy", { n: noBuy })),
+        pending > 0 && h("div", { class: "progress" },
+          h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
+          progressBar((p.items.length - pending) / p.items.length)),
       ),
       h("ul", { class: "list" }, items.map(homeRow)),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
     ], { keepScroll });
+  }
+
+  function progressBar(ratio) {
+    const bar = h("div", { class: "bar", role: "progressbar", "aria-valuenow": String(Math.round(ratio * 100)) },
+      h("span", {}));
+    bar.style.setProperty("--done", `${Math.round(ratio * 100)}%`);
+    return bar;
   }
 
   function homeRow(it) {
@@ -525,7 +550,7 @@
         h("div", { class: "row-sub hint num" }, sub),
       ),
       h("div", { class: "row-side num" },
-        h("div", { class: "row-value" }, money(value)),
+        it.pending ? h("div", { class: "sk sk-price", "aria-hidden": "true" }) : h("div", { class: "row-value" }, money(value)),
         ratio != null && h("div", { class: `row-pnl ${trend(ratio)}` }, percent(ratio)),
       ),
     ), () => { haptic.tap(); showItem(it, "edit"); });

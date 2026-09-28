@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from typing import Callable
 
 from ..steam import (
@@ -83,10 +84,13 @@ def to_cents(price: float | None) -> int | None:
 class PriceService:
     def __init__(self, store: Store, market: SteamMarket, *, currency: str, kind: str,
                  refresh_minutes: float, clock: Callable[[], float] = time.time,
-                 interactive_wait: float = INTERACTIVE_WAIT):
+                 interactive_wait: float = INTERACTIVE_WAIT, overview_market: SteamMarket | None = None):
         self.store = store
         self.market = market
         self.fetcher = PriceFetcher(market, currency, kind)
+        # priceoverview only knows the lowest listing, so it can only help "sell".
+        self._overview = overview_market if kind == "sell" else None
+        self._overview_gate = SteamGate()
         self.max_age = refresh_minutes * 60
         self.interactive_wait = interactive_wait
         self._clock = clock
@@ -159,38 +163,55 @@ class PriceService:
     async def refresh(self) -> int:
         """One pass over every held item not checked within the refresh interval.
 
-        Items are visited least recently checked first, and every attempt (also a
-        failed one) counts as a check, so items that keep failing move to the back
-        instead of blocking the rest.
+        Items are visited least recently checked first (never-priced ones, e.g. a
+        fresh import, lead), and every attempt, failed or not, counts as a check,
+        so items that keep failing move to the back instead of blocking the rest.
+        Two workers share the queue when a second source is configured: the order
+        book and priceoverview have separate Steam limits, so together they price
+        a large import about half again as fast.
         """
         stale_before = self._clock() - self.max_age * 0.9
         due = [name for name, checked in self.store.tracked() if checked is None or checked < stale_before]
         if not due:
             return 0
         self.fetcher.start_pass()
+        queue = deque(due)
+        workers = [self._work(queue, "order book", self._gate, self.fetcher.fetch)]
+        if self._overview is not None:
+            workers.append(self._work(queue, "priceoverview", self._overview_gate, self._overview_fetch))
+        done = sum(await asyncio.gather(*workers))
+        log.info("Refreshed %d/%d price(s)", done, len(due))
+        return done
+
+    def _overview_fetch(self, name: str):
+        return self._overview.price_overview(name, self.fetcher.currency)
+
+    async def _work(self, queue: deque, source: str, gate: "SteamGate", fetch) -> int:
+        """Takes items off the shared queue until it is empty or this source gives out."""
         done = errors = 0
-        for name in due:
+        while queue:
+            name = queue.popleft()
             try:
-                await self._call(self.fetcher.fetch, name, on_result=lambda q, n=name: self._store_quote(n, q))
+                await gate.call(fetch, name, on_result=lambda q, n=name: self._store_quote(n, q))
             except ItemNotFound:
                 # Also what Steam answers under load; keep the last known price.
-                log.warning("%s: not found on the Steam market", name)
+                log.warning("%s: not found on the Steam market (%s)", name, source)
                 self.store.mark_checked(name, self._clock())
                 continue
             except (RateLimited, CurrencyMismatch) as e:
-                log.error("Price refresh stopped: %s", e)
+                queue.appendleft(name)  # the other worker may still get it
+                log.error("Price refresh via %s stopped: %s", source, e)
                 break
             except SteamError as e:
-                log.warning("%s: %s", name, e)
+                log.warning("%s: %s (%s)", name, e, source)
                 self.store.mark_checked(name, self._clock())
                 errors += 1
                 if errors >= MAX_CONSECUTIVE_ERRORS:
-                    log.error("Price refresh paused after %d Steam errors in a row", errors)
+                    log.error("Price refresh via %s paused after %d Steam errors in a row", source, errors)
                     break
                 continue
             errors = 0
             done += 1
-        log.info("Refreshed %d/%d price(s)", done, len(due))
         return done
 
     async def run(self) -> None:

@@ -255,7 +255,7 @@ def test_api_add_edit_delete_flow(tmp_path):
                               json={"hash_name": CASE, "qty": 10, "buy_price": 3.5, "mode": "add"})
         items = (await r.json())["items"]
         assert items[0] | {} == {"hash_name": CASE, "name": CASE, "icon": "abc", "qty": 10,
-                                 "buy_price": 3.5, "price": 4.64}
+                                 "buy_price": 3.5, "price": 4.64, "pending": False}
 
         await client.post("/api/holdings", headers=auth(),
                           json={"hash_name": CASE, "qty": 10, "buy_price": 4.5, "mode": "add"})
@@ -740,3 +740,57 @@ def test_wake_during_a_pass_is_not_lost(tmp_path):
         task.cancel()
     asyncio.run(main())
     assert len(passes) >= 2
+
+
+class OverviewMarket(FakeMarket):
+    def __init__(self, delay=0.0, **kw):
+        super().__init__(**kw)
+        self.delay = delay
+
+    def orderbook(self, hash_name):
+        time.sleep(self.delay)
+        return super().orderbook(hash_name)
+
+    def price_overview(self, hash_name, currency):
+        time.sleep(self.delay)
+        self.calls.append(("overview", hash_name))
+        book = self.books.get(hash_name, ItemNotFound(hash_name))
+        if isinstance(book, BaseException):
+            raise book
+        return Quote(hash_name, currency, None, book[1], "priceoverview")
+
+
+def test_refresh_splits_the_queue_between_two_sources(tmp_path):
+    books = {f"I{i}": (1, 2 + i) for i in range(10)}
+    main, overview = OverviewMarket(0.02, books=books), OverviewMarket(0.02, books=books)
+    store = Store(tmp_path / "t.db", "UAH")
+    prices = PriceService(store, main, currency="UAH", kind="sell", refresh_minutes=10, overview_market=overview)
+    for name in books:
+        store.add_lot(1, name, 1, 100)
+    assert store.holdings(1)[0].price_checked is None  # shown as "loading" in the app
+    assert asyncio.run(prices.refresh()) == 10
+    assert all(store.price(n)[0] == (2 + int(n[1:])) * 100 for n in books)
+    used_main = [c for c in main.calls if c[0] == "orderbook"]
+    used_overview = [c for c in overview.calls if c[0] == "overview"]
+    assert used_main and used_overview and len(used_main) + len(used_overview) == 10
+
+
+def test_one_source_giving_out_leaves_the_rest_to_the_other(tmp_path):
+    books = {f"I{i}": (1, 2) for i in range(6)}
+    main = OverviewMarket(0.01, books=books)
+    overview = OverviewMarket(0.01, books={n: RateLimited("429") for n in books})
+    store = Store(tmp_path / "t.db", "UAH")
+    prices = PriceService(store, main, currency="UAH", kind="sell", refresh_minutes=10, overview_market=overview)
+    for name in books:
+        store.add_lot(1, name, 1, 100)
+    assert asyncio.run(prices.refresh()) == 6  # the item overview failed on went back to the queue
+
+
+def test_buy_order_prices_use_the_order_book_only(tmp_path):
+    overview = OverviewMarket(books={"A": (1, 2)})
+    store = Store(tmp_path / "t.db", "UAH")
+    prices = PriceService(store, FakeMarket(books={"A": (1, 2)}), currency="UAH", kind="buy",
+                          refresh_minutes=10, overview_market=overview)
+    store.add_lot(1, "A", 1, 100)
+    asyncio.run(prices.refresh())
+    assert overview.calls == [] and store.price("A")[0] == 100
