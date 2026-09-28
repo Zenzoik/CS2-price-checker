@@ -139,6 +139,8 @@ Portfolio rows show the change since yesterday's UTC close and can be sorted by 
 
 **Inventory check.** An import remembers the Steam profile and what its inventory held. Once a day per user the service reads that inventory again and, if something changed, the bot sends one message and Home shows a card: new marketable items open the import with them ticked, and held items that left the inventory ask "sold?" and open the sale screen. Nothing is added or removed on its own. The check shares the server's inventory budget with users' own lookups and runs only when a request is left over for them, so it never makes an import wait. It can be turned off under the bell. Databases upgraded from before this start checking after the next import.
 
+**Folders, export and sharing.** Folders ("Main", "Alt", "Long-term") group positions; chips above Home and the Portfolio tab switch between them, and the totals, list and chart follow. An item is in one folder at a time. "Export to CSV" under the Portfolio list makes the bot send the positions (and sales) as CSV files, in the separators and decimal mark of the user's language. The share button on Home draws a picture of the portfolio, with profit in percent and the top items, and amounts only if chosen. It can be sent to a chat (through the bot on clients without `shareMessage`) or to a story. Admins can message every user who allowed the bot to write to them from the statistics screen; the broadcast is paced under Telegram's limits and resumes after a restart.
+
 ## How prices are fetched
 
 Steam decides the currency of its order book from your **IP address**, and the order book is the only source of exact buy/sell prices. So:

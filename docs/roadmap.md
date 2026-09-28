@@ -142,10 +142,24 @@ These features let the bot bring users back to the app. They depend on 1.1 for "
 
 These are independent of each other. Pick them from feedback.
 
-- **4.1 Share card (M):** an image with the portfolio value, P&L and top items, shared to chats or Stories (`shareMessage` / `shareToStory`). It includes the bot's link, so it doubles as promotion. Showing amounts is opt-in.
-- **4.2 Folders / several accounts (M):** group holdings, for example "Main", "Alt", "Long-term", with a folder filter on Home.
-- **4.3 Export (S):** CSV of holdings and sales. Optionally write to the Google Sheet format of the original CLI tracker.
-- **4.4 Broadcast (S):** in the admin screen, send a message to all users who pressed `/start`, rate-limited to stay within Telegram's limits.
+- **4.1 Share card (M) — implemented:** an image with the portfolio value, P&L and top items, shared to chats or Stories (`shareMessage` / `shareToStory`). It includes the bot's link, so it doubles as promotion. Showing amounts is opt-in.
+  - **Built:** the app draws a 1080×1350 card on a canvas (there is no image library on the server) with the profit in percent and the top five, or the value and amounts when the user switches them on. It follows the folder shown.
+  - The JPEG is uploaded to `/api/share` and served from memory under an unguessable URL for 24 h, so Telegram can fetch it.
+  - "Send to a chat" uses `savePreparedInlineMessage` + `shareMessage` (Bot API 8.0). When the client is older or Telegram refuses, the bot sends the picture to the user's chat to forward. The message links to `t.me/<bot>`, because shared messages can't carry a web_app button.
+  - "Share to story" (`shareToStory`, mobile clients) is shown only where it works. Ten shares per user per 10 minutes.
+- **4.2 Folders / several accounts (M) — implemented:** group holdings, for example "Main", "Alt", "Long-term", with a folder filter on Home.
+  - **Built:** `folders` (schema v9), with `holdings.folder_id` as a label; at most 10 folders.
+  - Chips above Home and the Portfolio tab filter the totals, the list, the top five and the chart. The chart shows the history of the items now in the folder.
+  - Folders are managed on their own screen (rename in place, delete keeps the items). An item's screen has a folder picker, and selection mode can move several at once.
+  - New items and imports land in the folder being shown. Realized profit, alerts and the digest stay whole-portfolio.
+  - **Decision:** an item is in one folder at a time. Holding the same case on two Steam accounts as two positions would change the key every other feature uses (`user_id, hash_name`), so it waits for demand.
+- **4.3 Export (S) — implemented:** CSV of holdings and sales. Optionally write to the Google Sheet format of the original CLI tracker.
+  - **Built:** "Export to CSV" under the Portfolio list. The bot sends `cs2-portfolio-<date>.csv` (with folder, price paid, price, net value and profit) and, when there are sales, `cs2-sales-<date>.csv` to the user's chat. `downloadFile` needs Bot API 8.0 and a public, header-less URL, while a document in the chat works everywhere and stays there.
+  - Files follow the user's language: commas and a decimal point in English, semicolons and a decimal comma in Russian and Ukrainian, with a BOM for Excel. Three exports per user per 10 minutes.
+  - The Google Sheet option is left out: it needs per-user Google credentials.
+- **4.4 Broadcast (S) — implemented:** in the admin screen, send a message to all users who pressed `/start`, rate-limited to stay within Telegram's limits.
+  - **Built:** `broadcasts` (schema v9) and `cs2tracker/app/broadcast.py`. The message goes to everyone the bot may write to (`write_access`), at up to 20 messages a second, with the "Open portfolio" button.
+  - A cursor in the database makes it resume after a restart. The admin screen shows the audience, progress and the last result, and can stop a broadcast. Only one runs at a time, and a private bot skips users it doesn't allow.
 
 ---
 
