@@ -135,6 +135,8 @@ class Quote:
     highest_buy: float | None
     lowest_sell: float | None
     source: str
+    buy_orders: int | None = None
+    sell_listings: int | None = None
 
     def price(self, kind: str) -> float | None:
         if kind == "buy":
@@ -173,6 +175,14 @@ def _cents(amount: object, count: object) -> float | None:
     if not count or amount is None:
         return None
     return int(amount) / 100
+
+
+def _order_count(value: object) -> int | None:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
 
 
 class SteamMarket:
@@ -252,6 +262,8 @@ class SteamMarket:
                 highest_buy=_cents(book.get("amtMaxBuyOrder"), book.get("cBuyOrders")),
                 lowest_sell=_cents(book.get("amtMinSellOrder"), book.get("cSellOrders")),
                 source="orderbook",
+                buy_orders=_order_count(book.get("cBuyOrders")),
+                sell_listings=_order_count(book.get("cSellOrders")),
             )
         except (AttributeError, KeyError, TypeError, ValueError) as e:
             raise SteamError(f"unexpected orderbook response: {e!r}") from e

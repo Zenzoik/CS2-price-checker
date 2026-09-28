@@ -46,6 +46,7 @@ def test_orderbook_parses_cents_and_currency():
     market, _ = make_market({"/orderbook": [FakeResponse(body=orderbook_body(buy=42100, sell=46400, currency=18))]})
     q = market.orderbook("Operation Breakout Weapon Case")
     assert (q.currency, q.highest_buy, q.lowest_sell) == ("UAH", 421.0, 464.0)
+    assert (q.buy_orders, q.sell_listings) == (10, 10)
     url, params = market.session.calls[0]
     assert params["q"] == "Load"
     assert json.loads(params["qp"]) == [730, "Operation Breakout Weapon Case"]
@@ -53,7 +54,8 @@ def test_orderbook_parses_cents_and_currency():
 
 def test_orderbook_without_orders_has_no_price():
     market, _ = make_market({"/orderbook": [FakeResponse(body=orderbook_body(buy=0, n_buy=0))]})
-    assert market.orderbook("X").highest_buy is None
+    q = market.orderbook("X")
+    assert q.highest_buy is None and q.buy_orders == 0
 
 
 def test_orderbook_unknown_item():
