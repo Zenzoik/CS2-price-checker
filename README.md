@@ -121,9 +121,19 @@ chown --reference=. cs2tracker.db                    # the service's dynamic use
 systemctl start cs2tracker-app
 ```
 
+**Upgrades and rollbacks.** When a new release changes the database schema, the service first writes a backup and refuses to start if it can't. An older release can't open an upgraded database, so rolling back a deploy means restoring that backup, taken just before the upgrade, as above.
+
 On start the bot sets its menu button to open the app, and it answers any message with an **Open portfolio** button. The app speaks English, Russian and Ukrainian, following the user's Telegram language.
 
 All prices use one currency (`CS2BOT_CURRENCY`, default UAH). The database remembers it and refuses to start with a different one, so prices never get mixed. Large imports are priced one item at a time (about 40 per minute) while Home shows the progress; ideas for faster estimates are in [docs/ideas.md](docs/ideas.md). Planned features are in [docs/roadmap.md](docs/roadmap.md). The [same rules](#how-prices-are-fetched) apply for which currencies and price kinds work from your server's IP.
+
+The Mini App also keeps one price per item per UTC day in `price_history`. Each successful refresh replaces that day's value, so the last one before midnight is the daily close. A refresh that finds no price (no listings or buy orders) is recorded as "no price"; a failed request records nothing and the previous price stands, the same rule the current prices follow. Existing databases start collecting history when upgraded.
+
+Home shows the portfolio value, how much prices moved it over the chosen period (a week, a month or all available history), the profit, a value chart for that period and the five most valuable items. The full list is in the Portfolio tab. The price move leaves out items that were added or removed, and items that gained or lost a price, so a purchase never shows up as a gain. The chart uses recorded daily quantities, so it begins on the day quantity tracking was enabled; days when holdings changed are marked on the line.
+
+Portfolio rows show the change since yesterday's UTC close and can be sorted by that change. The item screen shows seven-day change when enough history exists, the break-even listing price per item after Steam's 15% fee, and the latest listing/buy-order counts and spread when the order book provides them. Missing history or market depth is left blank.
+
+**Notifications.** The bell on Home opens alerts and the summary. An alert is one condition: an item's price above or below a level, its profit on the price paid, or the portfolio's value up or down by a percent or an amount since the alert was set (only price moves count, not items added or removed). Alerts are checked after each price refresh, so they arrive within about one refresh interval and cost no extra Steam requests. Each fires once and fires again only after the value has moved back across the threshold by a small margin; everything due at once arrives as one message. Items you don't own can be watched from their screen: they are refreshed like holdings and listed under "Watching", but never counted in the totals. The summary is a daily or Monday message at the hour you choose (in your time zone) with the portfolio value, the price move and the best and worst item; it is off by default and offered once. The bot can only write to users who allowed it; the app asks when the first alert or summary is set up. Limits: 20 alerts and 50 watched items per user.
 
 ## How prices are fetched
 

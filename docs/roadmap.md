@@ -42,32 +42,37 @@ Do this first. It is small, and every later phase writes more data we would not 
 
 This phase adds the price history that phases 2 and 3 build on.
 
-### 1.1 Price history (M): foundation
+### 1.1 Price history (M): foundation — implemented, awaiting multi-day check
 - **What:** a `price_history (hash_name, day, cents)` table holding one closing price per item per UTC day. The existing refresh fills it, so there are no extra Steam requests.
 - **Decisions:**
   - One row per day, not every refresh: 10-minute points aren't worth the storage.
-  - Keep the history forever. At about 1 KB per item per year it costs almost nothing.
+  - Keep the history forever. With one row a day, storage stays modest (typically tens of KB per item per year in SQLite).
 - **Done when:** after a few days every held item has one row per day, and a test shows that a restart doesn't create duplicate rows.
+- **Built:** each successful price fetch updates the current UTC day's row in `price_history` in the same transaction as the price cache. No extra Steam request is made. A fetch that finds no price stores NULL for the day, and a failed fetch stores nothing, the same rule as the price cache, so a past day's value never changes after the fact. Existing databases begin collecting history after the v3 migration; a schema upgrade now backs the database up first.
 
-### 1.2 Portfolio value chart (M)
-- **What:** a line chart of total net value on Home, above the list, with a 7d / 30d / All switch. Tapping a day shows its value.
+### 1.2 Portfolio value chart (M) — implemented, awaiting multi-day check
+- **What:** a line chart of total net value on Home, with a 7d / 30d / All switch. Tapping a day shows its value. Home also shows the five most valuable positions; the full list lives in the Portfolio tab.
 - **Decisions:**
   - The chart shows **value**, not profit. On days when items were added or removed, value jumps for reasons that aren't market moves. We mark those days on the chart rather than hide the jumps.
   - Follow the `dataviz` skill: one series, no legend, a hover or tap layer.
 - **Done when:** the chart matches a hand calculation over the seeded history, in both themes.
+- **Built:** quantity changes are recorded daily, including removals, and reconciled with the holdings on every start. The chart starts when this tracking begins; it does not invent quantities for earlier days. It has high/low and first/last-day labels, and a legend for the marked days. Above it, Home shows the change the market made over the period (additions, removals and items gaining or losing a price are left out) with a time-weighted percent, and the profit. "Week" and "Month" include the day they are measured from. The Home top five show the price change since yesterday when a previous close exists.
 
-### 1.3 24h / 7d change per item (S)
+### 1.3 24h / 7d change per item (S) — implemented, awaiting multi-day check
 - **What:** each row shows the change since yesterday next to the P&L. Sorting gains "Change, 24h".
 - **Depends on:** 1.1.
+- **Built:** Portfolio rows show the change since yesterday next to P&L and can be sorted by it. The item screen shows daily and seven-day changes when the corresponding UTC-day closing price exists. Missing history stays hidden; it is never filled from older data.
 
-### 1.4 Break-even price (S)
+### 1.4 Break-even price (S) ✅ done
 - **What:** the item screen shows the price at which selling returns what was paid after the 15% fee (`buy_price × 1.15`), for example "Break-even: 29,90 ₴". It is hidden when no price paid is known.
 - **Depends on:** nothing, so it can ship at any time.
+- **Built:** the item form calculates the minimum gross Steam listing price that returns the entered per-item cost after the 15% fee, rounded up to the smallest currency unit. It updates as the cost changes and is hidden when the cost is unknown.
 
-### 1.5 Liquidity (S)
+### 1.5 Liquidity (S) ✅ done
 - **What:** the item screen shows listing and buy-order counts and the spread between them. The order book request already returns these counts.
 - **Why:** it answers "can I actually sell 150 of these?".
 - **Decision:** the counts come from the order book only. On hosts where the priceoverview source served the price, the counts are absent.
+- **Built:** each successful order book fetch stores listing and buy-order counts and the bid/ask spread. The item screen shows the available figures. A priceoverview quote clears these figures rather than presenting stale counts for that price.
 
 ---
 
@@ -75,7 +80,7 @@ This phase adds the price history that phases 2 and 3 build on.
 
 These features let the bot bring users back to the app. They depend on 1.1 for "since yesterday" style triggers. Plain price thresholds work without it.
 
-### 2.1 Threshold alerts (M), the owner's request
+### 2.1 Threshold alerts (M), the owner's request — implemented
 - **What:** "Notify me when…" on the item screen, and the same for the whole portfolio on Home. Each alert is one field and a direction.
 - **Alert types:**
   - Item: price paid +/− X %; price per item above or below X ₴.
@@ -87,14 +92,22 @@ These features let the bot bring users back to the app. They depend on 1.1 for "
   - Every alert message has an "Open portfolio" button.
 - **Limits:** 20 alerts per user.
 - **Done when:** crossing a threshold sends exactly one message, crossing back and forth sends one per crossing, and alerts can be listed, edited and deleted.
+- **Built:** `alerts` table (schema v7) and `cs2tracker/app/notify.py`, run as its own supervised job that wakes after each refresh pass that stored prices.
+  - Re-arming needs the value back past the threshold by 2 % (money) or 0.5 percentage points (percent), so a price hovering at the threshold can't spam. An alert is marked as sent before the message goes out; if Telegram refuses it, the alert is re-armed and tried on a later pass. Users the bot may not write to (never pressed Start, declined, or blocked the bot) get nothing, and their alerts stay armed until they allow it. Sends are paced and honour Telegram's `retry after`.
+  - Items with an alert are refreshed even when neither held nor watched. A profit alert is deleted with its position; price alerts stay.
+  - Everything one user has due in a pass goes out as one message.
+  - Portfolio alerts count price moves only, like the Home change: adding, editing or removing a position, and an item gaining or losing a price, shift the alert's baseline instead of triggering it. Editing an alert keeps its baseline.
+  - Write access: set when the user writes to the bot or allows it in the app (`requestWriteAccess` on the first alert or digest), cleared when Telegram answers 403.
+  - Entry points: the bell on Home (all alerts and the digest) and "Notify me…" on the item screen.
 
-### 2.2 Watchlist (S, built on 2.1)
+### 2.2 Watchlist (S, built on 2.1) — implemented
 - **What:** items the user doesn't own, with a price alert, for example "tell me when Kilowatt is below 40 ₴". They show in a separate "Watching" section with no quantity.
-- **Decision:** a watched item is a holding with `qty = 0`, so it reuses price refresh and alerts. Totals and "invested" skip these rows.
+- **Decision (changed while building):** a separate `watchlist` table rather than holdings with `qty = 0`. `holdings` has `CHECK (qty > 0)`, and every total, count, limit and history query would otherwise need a `qty > 0` filter. The refresh reads held and watched items together, so watched items still cost no extra logic; buying an item takes it off the watchlist. Limit: 50 per user.
 
-### 2.3 Daily / weekly digest (S, needs 1.1)
+### 2.3 Daily / weekly digest (S, needs 1.1) — implemented
 - **What:** an optional bot message at a time the user chooses, for example: "Portfolio 14 795 ₴, +2.1 % today. Best: Kilowatt +6 %. Worst: Prisma 2 −3 %."
 - **Decision:** it is off by default and offered once, after the user's first import or third added item.
+- **Built:** daily or weekly (Mondays) at a local hour; the app sends its IANA time zone. At most one per local day; one that is more than 3 hours late (e.g. after downtime) is skipped rather than sent at night. The change is the market-only move from `portfolio_history`; best and worst compare with yesterday's (or last week's) close. The offer is a card on Home.
 
 ---
 
