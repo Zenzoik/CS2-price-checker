@@ -54,9 +54,10 @@ class BotApiError(Exception):
 
 
 class TelegramBot:
-    def __init__(self, settings: AppSettings, session: aiohttp.ClientSession):
+    def __init__(self, settings: AppSettings, session: aiohttp.ClientSession, store=None):
         self.settings = settings
         self.session = session
+        self.store = store  # usage statistics; optional
 
     async def call(self, method: str, **params):
         """Bot API call; every failure comes out as BotApiError with the token redacted."""
@@ -120,6 +121,9 @@ class TelegramBot:
         user = message.get("from") or {}
         if chat.get("type") != "private" or not isinstance(user.get("id"), int):
             return
+        if self.store is not None:
+            self.store.touch_user(user, "bot")
+            self.store.log_event(user["id"], "bot")
         t = texts(user.get("language_code"))
         if not self.settings.allows(user["id"]):
             await self.call("sendMessage", chat_id=chat["id"], text=t["private"])

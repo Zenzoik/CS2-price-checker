@@ -70,6 +70,9 @@ INVENTORY_LIMITER = web.AppKey("inventory_limiter", object)
 USER_INVENTORY_LIMITER = web.AppKey("user_inventory_limiter", object)
 # user id -> (time, steamid, {hash name: qty}) of the last inventory preview
 PREVIEWS = web.AppKey("previews", dict)
+# user id -> monotonic time we last wrote their last_seen (at most once a minute)
+TOUCHED = web.AppKey("touched", dict)
+TOUCH_EVERY = 60
 # RequestKey appeared in aiohttp 3.12; a plain string works everywhere.
 USER_ID = web.RequestKey("user_id", int) if hasattr(web, "RequestKey") else "user_id"
 
@@ -151,7 +154,23 @@ async def authenticate(request: web.Request, handler):
     if not settings.allows(user["id"]):
         raise ApiError(403, "private", "This bot is private")
     request[USER_ID] = user["id"]
+    _touch(request.app, user)
     return await handler(request)
+
+
+def _touch(app: web.Application, user: dict) -> None:
+    touched = app[TOUCHED]
+    now = time.monotonic()
+    if now - touched.get(user["id"], -TOUCH_EVERY) < TOUCH_EVERY:
+        return
+    if len(touched) > 10_000:
+        touched.clear()
+    touched[user["id"]] = now
+    app[STORE].touch_user(user, "app")
+
+
+def _event(request: web.Request, kind: str, n: int = 1) -> None:
+    request.app[STORE].log_event(request[USER_ID], kind, n)
 
 
 # -- handlers -------------------------------------------------------------------
@@ -165,7 +184,10 @@ async def portfolio(request: web.Request) -> web.Response:
     settings = request.app[SETTINGS]
     holdings = store.holdings(request[USER_ID])
     stamps = [h.price_updated for h in holdings if h.price_updated is not None]
+    if request.query.get("open") == "1":
+        _event(request, "open")
     return web.json_response({
+        "is_admin": request[USER_ID] in settings.admins,
         "currency": store.currency,
         "version": request.app[VERSION],  # an open app reloads itself when this changes
         "price_kind": settings.price,
@@ -178,6 +200,7 @@ async def search(request: web.Request) -> web.Response:
     query = request.query.get("q", "").strip()
     if not 2 <= len(query) <= 100:
         raise ApiError(400, "invalid", "Type at least 2 characters")
+    _event(request, "search")
     try:
         results = await request.app[PRICES].search(query, _charge(request))
     except SteamBusy as e:
@@ -224,6 +247,7 @@ async def save_holding(request: web.Request) -> web.Response:
     if mode == "set":
         if not store.set_holding(user_id, hash_name, qty, buy_cents):
             raise ApiError(404, "gone", "This item is no longer in your portfolio")
+        _event(request, "edit")
     elif mode == "add":
         if store.holding(user_id, hash_name) is None:
             _check_room(request)
@@ -233,6 +257,7 @@ async def save_holding(request: web.Request) -> web.Response:
             store.add_lot(user_id, hash_name, qty, buy_cents)
         except QuantityLimit as e:
             raise ApiError(400, "too_many", f"At most {MAX_QTY:,} of one item") from e
+        _event(request, "add")
     else:
         raise ApiError(400, "invalid", "mode must be 'add' or 'set'")
     return await portfolio(request)
@@ -241,7 +266,8 @@ async def save_holding(request: web.Request) -> web.Response:
 async def delete_holding(request: web.Request) -> web.Response:
     body = await _json_body(request)
     request.app[WRITE_LIMITER].check(request[USER_ID])
-    request.app[STORE].delete_holding(request[USER_ID], _hash_name(body.get("hash_name")))
+    if request.app[STORE].delete_holding(request[USER_ID], _hash_name(body.get("hash_name"))):
+        _event(request, "remove")
     return await portfolio(request)
 
 
@@ -278,6 +304,7 @@ async def inventory(request: web.Request) -> web.Response:
         raise ApiError(503, "steam", "Steam is not responding, try again") from e
 
     store = request.app[STORE]
+    _event(request, "inventory")
     store.remember_items([(i.hash_name, i.name, i.icon_url) for i in items])
     previews = request.app[PREVIEWS]
     if len(previews) >= 1000:
@@ -330,9 +357,17 @@ async def import_items(request: web.Request) -> web.Response:
         rows[name] = (name, preview[2][name], buy, mode == "market")
     if len(held) + len(rows) > request.app[SETTINGS].max_items:
         raise ApiError(400, "full", "Portfolio is full")
-    store.import_items(user_id, list(rows.values()))
+    added = store.import_items(user_id, list(rows.values()))
+    if added:
+        _event(request, "import", added)
     prices.wake()
     return await portfolio(request)
+
+
+async def admin_stats(request: web.Request) -> web.Response:
+    if request[USER_ID] not in request.app[SETTINGS].admins:
+        raise ApiError(403, "forbidden", "Admins only")
+    return web.json_response(request.app[STORE].stats())
 
 
 async def _ensure_known(request: web.Request, hash_name: str) -> None:
@@ -428,6 +463,7 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app[INVENTORY_LIMITER] = RateLimiter(INVENTORY_LOOKUPS_PER_MINUTE, code="inventory_busy")
     app[USER_INVENTORY_LIMITER] = RateLimiter(*INVENTORY_LOOKUPS_PER_USER)
     app[PREVIEWS] = {}
+    app[TOUCHED] = {}
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)
@@ -437,4 +473,5 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_post("/api/holdings/delete", delete_holding)
     app.router.add_get("/api/inventory", inventory)
     app.router.add_post("/api/import", import_items)
+    app.router.add_get("/api/admin/stats", admin_stats)
     return app

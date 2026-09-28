@@ -45,6 +45,33 @@
       becomes: "Will become {qty} at {price} each.",
       removeFull: "Remove from portfolio",
       pricing: "Fetching prices: {n} of {total}",
+      stats: "Statistics",
+      st_users: "Users",
+      st_active7: "Active, 7 days",
+      st_new7: "New, 7 days",
+      st_withPortfolio: "With a portfolio",
+      st_more: "Active today: {d1} · 30 days: {d30} · only pressed /start: {bot}",
+      st_chart: "Active users per day, 14 days",
+      st_dayTip: "{day}: {active} active, {new} new",
+      st_actions: "Actions, 7 days",
+      act_open: "App opens",
+      act_search: "Searches",
+      act_add: "Items added",
+      act_edit: "Edits",
+      act_remove: "Removals",
+      act_inventory: "Inventory lookups",
+      act_import: "Items imported",
+      act_bot: "Bot messages",
+      st_top: "Most held items",
+      st_holders: "{n} users · {qty} pcs",
+      st_recent: "Recent users",
+      st_userSub: "{items} items · seen {ago}",
+      st_prices: "Prices",
+      st_tracked: "Items tracked",
+      st_pending: "Not priced yet",
+      st_lastCheck: "Last Steam check",
+      st_oldest: "Oldest price",
+      st_none: "No data yet",
       sortBy: "Sort by", sortAsc: "Ascending", sortDesc: "Descending",
       sort_value: "Value", sort_profitPct: "Profit, %", sort_profit: "Profit", sort_qty: "Quantity",
       sort_price: "Price each", sort_name: "Name", sort_added: "Recently added",
@@ -94,6 +121,33 @@
       becomes: "Станет {qty} шт. по {price}.",
       removeFull: "Убрать из портфеля",
       pricing: "Получаем цены: {n} из {total}",
+      stats: "Статистика",
+      st_users: "Пользователи",
+      st_active7: "Активны за 7 дней",
+      st_new7: "Новые за 7 дней",
+      st_withPortfolio: "С портфелем",
+      st_more: "Сегодня: {d1} · за 30 дней: {d30} · только нажали /start: {bot}",
+      st_chart: "Активные пользователи по дням, 14 дней",
+      st_dayTip: "{day}: активных {active}, новых {new}",
+      st_actions: "Действия за 7 дней",
+      act_open: "Открытия приложения",
+      act_search: "Поиски",
+      act_add: "Добавлено предметов",
+      act_edit: "Изменения",
+      act_remove: "Удаления",
+      act_inventory: "Просмотры инвентаря",
+      act_import: "Импортировано предметов",
+      act_bot: "Сообщения боту",
+      st_top: "Популярные предметы",
+      st_holders: "у {n} польз. · {qty} шт.",
+      st_recent: "Последние пользователи",
+      st_userSub: "предметов: {items} · был(а) {ago}",
+      st_prices: "Цены",
+      st_tracked: "Отслеживается предметов",
+      st_pending: "Ещё без цены",
+      st_lastCheck: "Последняя проверка Steam",
+      st_oldest: "Самая старая цена",
+      st_none: "Пока нет данных",
       sortBy: "Сортировка", sortAsc: "По возрастанию", sortDesc: "По убыванию",
       sort_value: "Стоимость", sort_profitPct: "Прибыль, %", sort_profit: "Прибыль, ₴", sort_qty: "Количество",
       sort_price: "Цена за шт.", sort_name: "Название", sort_added: "Недавно добавленные",
@@ -143,6 +197,33 @@
       becomes: "Стане {qty} шт. по {price}.",
       removeFull: "Прибрати з портфеля",
       pricing: "Отримуємо ціни: {n} з {total}",
+      stats: "Статистика",
+      st_users: "Користувачі",
+      st_active7: "Активні за 7 днів",
+      st_new7: "Нові за 7 днів",
+      st_withPortfolio: "З портфелем",
+      st_more: "Сьогодні: {d1} · за 30 днів: {d30} · лише натиснули /start: {bot}",
+      st_chart: "Активні користувачі по днях, 14 днів",
+      st_dayTip: "{day}: активних {active}, нових {new}",
+      st_actions: "Дії за 7 днів",
+      act_open: "Відкриття застосунку",
+      act_search: "Пошуки",
+      act_add: "Додано предметів",
+      act_edit: "Зміни",
+      act_remove: "Видалення",
+      act_inventory: "Перегляди інвентарю",
+      act_import: "Імпортовано предметів",
+      act_bot: "Повідомлення боту",
+      st_top: "Популярні предмети",
+      st_holders: "у {n} корист. · {qty} шт.",
+      st_recent: "Останні користувачі",
+      st_userSub: "предметів: {items} · був(ла) {ago}",
+      st_prices: "Ціни",
+      st_tracked: "Відстежується предметів",
+      st_pending: "Ще без ціни",
+      st_lastCheck: "Остання перевірка Steam",
+      st_oldest: "Найстаріша ціна",
+      st_none: "Поки немає даних",
       sortBy: "Сортування", sortAsc: "За зростанням", sortDesc: "За спаданням",
       sort_value: "Вартість", sort_profitPct: "Прибуток, %", sort_profit: "Прибуток, ₴", sort_qty: "Кількість",
       sort_price: "Ціна за шт.", sort_name: "Назва", sort_added: "Нещодавно додані",
@@ -439,9 +520,12 @@
     window.location.reload();
   }
 
+  let opened = false;
+
   async function loadPortfolio() {
     try {
-      const p = await api("/api/portfolio");
+      const p = await api(opened ? "/api/portfolio" : "/api/portfolio?open=1");
+      opened = true;
       setPortfolio(p);
       reloadIfOutdated(p.version);
     } catch (e) {
@@ -518,7 +602,7 @@
         h("div", { class: "empty-icon", "aria-hidden": "true" }, "📦"),
         h("div", { class: "empty-title" }, t("emptyTitle")),
         h("p", { class: "empty-text" }, t("emptyText")),
-      )]);
+      ), p.is_admin && h("p", { class: "foot" }, h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats")))]);
       return;
     }
 
@@ -551,6 +635,7 @@
       h("ul", { class: "list" }, items.map(homeRow)),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
+      p.is_admin && h("p", { class: "foot" }, h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
     ], { keepScroll });
   }
 
@@ -981,6 +1066,101 @@
       }
       alertUser(errorText(e));
     }
+  }
+
+  // -- screen: admin statistics ---------------------------------------------
+  // Only reachable for ids in CS2BOT_ADMINS; the server checks it again.
+
+  function showAdmin() {
+    state.screen = "admin";
+    state.back = () => showHome();
+    setBack(true);
+    main.set(null);
+    secondary.set(null);
+    const box = h("div", {}, h("section", { class: "hero" }, h("div", { class: "sk sk-hero" })));
+    mount([box]);
+    api("/api/admin/stats").then((data) => {
+      if (state.screen === "admin" && app.contains(box)) box.replaceChildren(...adminView(data));
+    }).catch((e) => {
+      if (state.screen === "admin" && app.contains(box)) box.replaceChildren(h("p", { class: "message" }, errorText(e)));
+    });
+  }
+
+  const compact = (n) => numberFormat({ notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
+  const utcDay = (sec) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" })
+    .format(new Date(sec * 1000));
+
+  function adminView(d) {
+    const u = d.users;
+    const tile = (value, label) => h("div", { class: "tile" },
+      h("div", { class: "tile-value" }, compact(value)), h("div", { class: "tile-label hint" }, label));
+    const section = (title, ...body) => [h("div", { class: "section-title hint" }, title), ...body];
+    const row = (label, value) => h("li", { class: "row plain" },
+      h("div", { class: "row-main" }, label), h("div", { class: "row-side num" }, value));
+
+    const actions = ["open", "search", "inventory", "import", "add", "edit", "remove", "bot"]
+      .filter((k) => d.actions_7d[k]);
+    const p = d.prices;
+
+    return [
+      h("div", { class: "tiles" },
+        tile(u.total, t("st_users")), tile(u.active_7d, t("st_active7")),
+        tile(u.new_7d, t("st_new7")), tile(u.with_portfolio, t("st_withPortfolio"))),
+      h("p", { class: "note" }, t("st_more", { d1: u.active_1d, d30: u.active_30d, bot: u.bot_only })),
+      ...section(t("st_chart"), activityChart(d.daily)),
+      ...section(t("st_actions"), actions.length
+        ? h("ul", { class: "list" }, actions.map((k) => row(t(`act_${k}`), compact(d.actions_7d[k]))))
+        : h("p", { class: "message" }, t("st_none"))),
+      ...section(t("st_top"), d.top_items.length
+        ? h("ul", { class: "list" }, d.top_items.map((it) => h("li", { class: "row plain" },
+          h("div", { class: "row-main" }, h("div", { class: "row-title" }, it.name),
+            h("div", { class: "row-sub hint num" }, t("st_holders", { n: it.holders, qty: it.qty }))))))
+        : h("p", { class: "message" }, t("st_none"))),
+      ...section(t("st_recent"), d.recent_users.length
+        ? h("ul", { class: "list" }, d.recent_users.map((r) => h("li", { class: "row plain" },
+          h("div", { class: "row-main" },
+            h("div", { class: "row-title" }, [r.first_name, r.username && `@${r.username}`].filter(Boolean).join(" ") || `id ${r.id}`),
+            h("div", { class: "row-sub hint num" }, t("st_userSub", { items: r.items, ago: ago(r.last_seen) }))),
+          h("div", { class: "row-side hint num small" }, String(r.id)))))
+        : h("p", { class: "message" }, t("st_none"))),
+      ...section(t("st_prices"), h("ul", { class: "list" },
+        row(t("st_tracked"), compact(p.tracked)),
+        row(t("st_pending"), compact(p.pending)),
+        row(t("st_lastCheck"), p.last_check ? ago(p.last_check) : "—"),
+        row(t("st_oldest"), p.oldest_price ? ago(p.oldest_price) : "—"))),
+    ];
+  }
+
+  // One series (active users per day): no legend, the section title names it.
+  // Columns grow from one baseline with 4px rounded tops; tap or hover shows the day.
+  function activityChart(days) {
+    const max = Math.max(1, ...days.map((x) => x.active));
+    const caption = h("div", { class: "chart-caption hint num" });
+    const describe = (x) => t("st_dayTip", { day: utcDay(x.day), active: x.active, new: x.new });
+    const last = days[days.length - 1];
+    caption.textContent = describe(last);
+    let selected = null;
+    const cols = days.map((x) => {
+      const bar = h("span", { class: "chart-bar" });
+      bar.style.setProperty("--h", `${(x.active / max) * 100}%`);
+      const col = h("button", { type: "button", class: "chart-col", "aria-label": describe(x) }, bar);
+      const pick = () => {
+        if (selected) selected.classList.remove("on");
+        selected = col;
+        col.classList.add("on");
+        caption.textContent = describe(x);
+      };
+      col.addEventListener("click", () => { haptic.tap(); pick(); });
+      col.addEventListener("mouseenter", pick);
+      if (x === last) { selected = col; col.classList.add("on"); }
+      return col;
+    });
+    return h("div", { class: "chart card" },
+      caption,
+      h("div", { class: "chart-plot" },
+        h("div", { class: "chart-max hint num" }, compact(max)),
+        h("div", { class: "chart-cols" }, cols)),
+      h("div", { class: "chart-axis hint num" }, h("span", {}, utcDay(days[0].day)), h("span", {}, utcDay(last.day))));
   }
 
   // -- screen: item ------------------------------------------------------------

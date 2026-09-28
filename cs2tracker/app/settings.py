@@ -32,10 +32,12 @@ class AppSettings:
     request_delay: float = 1.5
     # Telegram user ids allowed to use the app; empty = everyone.
     allowed_users: frozenset[int] = frozenset()
+    # Telegram user ids that see the usage statistics.
+    admins: frozenset[int] = frozenset()
     max_items: int = 200
 
     def allows(self, user_id: int) -> bool:
-        return not self.allowed_users or user_id in self.allowed_users
+        return not self.allowed_users or user_id in self.allowed_users or user_id in self.admins
 
 
 def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
@@ -59,10 +61,13 @@ def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
     if price not in PRICE_KINDS:
         raise SettingsError(f"CS2BOT_PRICE must be one of {PRICE_KINDS}")
 
-    try:
-        allowed = frozenset(int(x) for x in get("ALLOWED_USERS", "").replace(" ", "").split(",") if x)
-    except ValueError as e:
-        raise SettingsError("CS2BOT_ALLOWED_USERS must be comma-separated Telegram user ids") from e
+    def ids(key: str) -> frozenset[int]:
+        try:
+            return frozenset(int(x) for x in get(key, "").replace(" ", "").split(",") if x)
+        except ValueError as e:
+            raise SettingsError(f"CS2BOT_{key} must be comma-separated Telegram user ids") from e
+    allowed = ids("ALLOWED_USERS")
+    admins = ids("ADMINS")
 
     return AppSettings(
         bot_token=token,
@@ -75,6 +80,7 @@ def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
         refresh_minutes=_number(get, "REFRESH_MINUTES", 10, 1, 1440),
         request_delay=_number(get, "REQUEST_DELAY", 1.5, 0.5, 600),
         allowed_users=allowed,
+        admins=admins,
         max_items=int(_number(get, "MAX_ITEMS", 200, 1, 10000)),
     )
 

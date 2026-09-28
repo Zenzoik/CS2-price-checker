@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import time
 import sqlite3
 import sys
 
@@ -36,6 +37,7 @@ async def supervise(name: str, job) -> None:
 async def serve() -> None:
     settings = load_app_settings()
     store = Store(settings.db_path, settings.currency)
+    store.prune_events(time.time() - 180 * 86400)  # keep half a year of usage history
     # A user waits on these calls, so give up quickly instead of CLI-style backoff.
     market = SteamMarket(request_delay=settings.request_delay, max_retries=2, server_retries=1,
                          backoff=5.0, max_backoff=20.0, timeout=10.0)
@@ -54,7 +56,7 @@ async def serve() -> None:
         await web.TCPSite(runner, settings.host, settings.port).start()
         log.info("Mini App on http://%s:%d (public: %s)", settings.host, settings.port, settings.public_url)
         async with aiohttp.ClientSession() as session:
-            bot = TelegramBot(settings, session)
+            bot = TelegramBot(settings, session, store)
             await asyncio.gather(supervise("Price refresh", prices.run), supervise("Telegram bot", bot.run))
     finally:
         await runner.cleanup()

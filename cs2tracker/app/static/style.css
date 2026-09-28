@@ -195,3 +195,29 @@ main {
 .price-input::placeholder { color: var(--hint); font-size: 14px; }
 .price-input.invalid { color: var(--down); }
 .note.down { color: var(--down); }
+
+/* Admin statistics ------------------------------------------------------ */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.tile { background: var(--card); border-radius: var(--radius); padding: 14px; }
+.tile-value { font-size: 28px; font-weight: 600; line-height: 1.1; } /* proportional figures */
+.tile-label { font-size: 13px; margin-top: 4px; }
+.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.02em; margin: 22px 14px 8px; }
+.row.plain { cursor: default; min-height: 48px; }
+.row.plain:active { background: none; }
+.row.plain + .row.plain::before { left: 14px; }
+.row-side.small { font-size: 12px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 14px; }
+.chart-caption { font-size: 14px; min-height: 20px; }
+.chart-plot { position: relative; height: 120px; margin-top: 10px; border-bottom: 1px solid var(--sep); }
+.chart-max { position: absolute; top: -2px; left: 0; font-size: 11px; }
+.chart-cols { position: absolute; inset: 14px 0 0 0; display: flex; align-items: flex-end; gap: 2px; }
+.chart-col {
+  flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center;
+  border: 0; padding: 0; background: none; cursor: pointer;
+}
+.chart-bar {
+  width: 100%; max-width: 24px; height: var(--h); min-height: 0;
+  background: var(--accent); opacity: 0.45; border-radius: 4px 4px 0 0;
+}
+.chart-col.on .chart-bar, .chart-col:hover .chart-bar { opacity: 1; }
+.chart-axis { display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; }

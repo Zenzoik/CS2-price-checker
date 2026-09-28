@@ -32,6 +32,23 @@ CREATE TABLE IF NOT EXISTS items (
     icon      TEXT
 );
 {holdings}
+-- Usage, for the admin's statistics screen.
+CREATE TABLE IF NOT EXISTS users (
+    user_id    INTEGER PRIMARY KEY,
+    username   TEXT,
+    first_name TEXT,
+    language   TEXT,
+    first_seen REAL NOT NULL,
+    last_seen  REAL NOT NULL,
+    via        TEXT NOT NULL      -- where we first met them: 'app' or 'bot'
+);
+CREATE TABLE IF NOT EXISTS events (
+    ts      REAL NOT NULL,
+    user_id INTEGER NOT NULL,
+    kind    TEXT NOT NULL,        -- open, search, add, edit, remove, inventory, import, bot
+    n       INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
 CREATE TABLE IF NOT EXISTS prices (
     hash_name  TEXT PRIMARY KEY,
     cents      INTEGER,          -- NULL: no listings / buy orders, or never fetched
@@ -115,6 +132,84 @@ class Store:
 
     def close(self) -> None:
         self.conn.close()
+
+    # -- usage ---------------------------------------------------------------
+
+    def touch_user(self, user: dict, via: str, at: float | None = None) -> None:
+        """Records a Telegram user (from signed init data or a bot update)."""
+        at = time.time() if at is None else at
+        text = lambda key: str(user[key])[:64] if user.get(key) else None  # noqa: E731
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                     username = COALESCE(excluded.username, username),
+                     first_name = COALESCE(excluded.first_name, first_name),
+                     language = COALESCE(excluded.language, language),
+                     last_seen = MAX(last_seen, excluded.last_seen)""",
+                (int(user["id"]), text("username"), text("first_name"), text("language_code"), at, at, via),
+            )
+
+    def log_event(self, user_id: int, kind: str, n: int = 1, at: float | None = None) -> None:
+        with self.conn:
+            self.conn.execute("INSERT INTO events VALUES (?, ?, ?, ?)",
+                              (time.time() if at is None else at, user_id, kind, n))
+
+    def prune_events(self, before: float) -> int:
+        with self.conn:
+            return self.conn.execute("DELETE FROM events WHERE ts < ?", (before,)).rowcount
+
+    def stats(self, now: float | None = None, days: int = 14) -> dict:
+        """Usage numbers for the admin screen. Days are UTC calendar days."""
+        now = time.time() if now is None else now
+        one = lambda sql, *args: self.conn.execute(sql, args).fetchone()[0]  # noqa: E731
+        day = 86400
+        users = {
+            "total": one("SELECT COUNT(*) FROM users"),
+            "with_portfolio": one("SELECT COUNT(DISTINCT user_id) FROM holdings"),
+            "active_1d": one("SELECT COUNT(*) FROM users WHERE last_seen >= ?", now - day),
+            "active_7d": one("SELECT COUNT(*) FROM users WHERE last_seen >= ?", now - 7 * day),
+            "active_30d": one("SELECT COUNT(*) FROM users WHERE last_seen >= ?", now - 30 * day),
+            "new_7d": one("SELECT COUNT(*) FROM users WHERE first_seen >= ?", now - 7 * day),
+            "bot_only": one("SELECT COUNT(*) FROM users u WHERE NOT EXISTS "
+                            "(SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.kind != 'bot')"),
+        }
+        start = (int(now // day) - days + 1) * day
+        active = dict(self.conn.execute(
+            "SELECT CAST(ts / 86400 AS INTEGER), COUNT(DISTINCT user_id) FROM events "
+            "WHERE ts >= ? GROUP BY 1", (start,)).fetchall())
+        new = dict(self.conn.execute(
+            "SELECT CAST(first_seen / 86400 AS INTEGER), COUNT(*) FROM users WHERE first_seen >= ? GROUP BY 1",
+            (start,)).fetchall())
+        daily = [{"day": d * day, "active": active.get(d, 0), "new": new.get(d, 0)}
+                 for d in range(int(start // day), int(now // day) + 1)]
+        actions = dict(self.conn.execute(
+            "SELECT kind, SUM(n) FROM events WHERE ts >= ? GROUP BY kind", (now - 7 * day,)).fetchall())
+        top = [
+            {"hash_name": r[0], "name": r[1], "holders": r[2], "qty": r[3]}
+            for r in self.conn.execute(
+                """SELECT h.hash_name, COALESCE(i.name, h.hash_name), COUNT(*), SUM(h.qty)
+                   FROM holdings h LEFT JOIN items i ON i.hash_name = h.hash_name
+                   GROUP BY h.hash_name ORDER BY 3 DESC, 4 DESC LIMIT 5""")
+        ]
+        recent = [
+            {"id": r[0], "username": r[1], "first_name": r[2], "first_seen": r[3], "last_seen": r[4], "items": r[5]}
+            for r in self.conn.execute(
+                """SELECT u.user_id, u.username, u.first_name, u.first_seen, u.last_seen,
+                          (SELECT COUNT(*) FROM holdings h WHERE h.user_id = u.user_id)
+                   FROM users u ORDER BY u.last_seen DESC LIMIT 10""")
+        ]
+        prices = {
+            "tracked": one("SELECT COUNT(DISTINCT hash_name) FROM holdings"),
+            "pending": one("SELECT COUNT(DISTINCT h.hash_name) FROM holdings h "
+                           "LEFT JOIN prices p ON p.hash_name = h.hash_name WHERE p.checked_at IS NULL"),
+            "last_check": one("SELECT MAX(checked_at) FROM prices"),
+            "oldest_price": one("SELECT MIN(p.updated_at) FROM holdings h JOIN prices p ON p.hash_name = h.hash_name"),
+        }
+        return {"users": users, "daily": daily, "actions_7d": actions, "top_items": top,
+                "recent_users": recent, "prices": prices,
+                "holdings": {"rows": one("SELECT COUNT(*) FROM holdings"),
+                             "qty": one("SELECT COALESCE(SUM(qty), 0) FROM holdings")}}
 
     # -- item catalogue ------------------------------------------------------
 

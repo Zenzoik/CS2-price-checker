@@ -244,7 +244,7 @@ def test_api_add_edit_delete_flow(tmp_path):
     async def scenario(client, store, market):
         r = await client.get("/api/portfolio", headers=auth())
         body = await r.json()
-        assert body.pop("version")
+        assert body.pop("version") and body.pop("is_admin") is False
         assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": []}
 
         found = await (await client.get("/api/search", params={"q": "breakout"}, headers=auth())).json()
@@ -828,3 +828,71 @@ def test_index_pins_asset_versions(tmp_path):
         p = await (await client.get("/api/portfolio", headers=auth())).json()
         assert p["version"] == version
     run_api(tmp_path, scenario)
+
+
+# -- usage statistics -------------------------------------------------------------
+
+def test_usage_is_recorded_and_only_admins_see_it(tmp_path):
+    async def scenario(client, store, market):
+        # A regular user opens the app, searches and adds an item.
+        await client.get("/api/portfolio", params={"open": "1"}, headers=auth(42))
+        await client.get("/api/search", params={"q": "breakout"}, headers=auth(42))
+        await client.post("/api/holdings", headers=auth(42),
+                          json={"hash_name": CASE, "qty": 3, "buy_price": 1, "mode": "add"})
+        await client.post("/api/holdings/delete", headers=auth(42), json={"hash_name": "not held"})
+
+        r = await client.get("/api/admin/stats", headers=auth(42))
+        assert r.status == 403
+        me = await (await client.get("/api/portfolio", headers=auth(5))).json()
+        assert me["is_admin"] is True
+
+        stats = await (await client.get("/api/admin/stats", headers=auth(5))).json()
+        assert stats["users"]["total"] == 2 and stats["users"]["with_portfolio"] == 1
+        assert stats["actions_7d"] == {"open": 1, "search": 1, "add": 1}  # no-op removal not counted
+        assert stats["top_items"][0] == {"hash_name": CASE, "name": CASE, "holders": 1, "qty": 3}
+        assert stats["daily"][-1]["active"] == 1 and len(stats["daily"]) == 14
+        ann = next(u for u in stats["recent_users"] if u["id"] == 42)
+        assert ann["first_name"] == "Ann" and ann["items"] == 1
+    run_api(tmp_path, scenario, admins=frozenset({5}))
+
+
+def test_user_touch_is_throttled(tmp_path):
+    async def scenario(client, store, market):
+        for _ in range(5):
+            await client.get("/api/portfolio", headers=auth(42))
+        first = store.conn.execute("SELECT last_seen FROM users WHERE user_id = 42").fetchone()[0]
+        await client.get("/api/portfolio", headers=auth(42))
+        assert store.conn.execute("SELECT last_seen FROM users WHERE user_id = 42").fetchone()[0] == first
+    run_api(tmp_path, scenario)
+
+
+def test_stats_counts_bot_only_users_and_new_per_day(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    now = 20 * 86400 + 3600
+    store.touch_user({"id": 1, "username": "a"}, "bot", at=now - 86400)
+    store.log_event(1, "bot", at=now - 86400)
+    store.touch_user({"id": 2}, "app", at=now)
+    store.log_event(2, "open", at=now)
+    store.log_event(2, "import", 30, at=now)
+    stats = store.stats(now=now)
+    assert stats["users"]["bot_only"] == 1 and stats["users"]["total"] == 2
+    assert [(d["active"], d["new"]) for d in stats["daily"][-2:]] == [(1, 1), (1, 1)]
+    assert stats["actions_7d"]["import"] == 30
+    assert store.prune_events(now) == 1  # only the day-old bot event
+
+
+def test_admins_may_use_a_private_bot():
+    s = settings(allowed_users=frozenset({1}), admins=frozenset({9}))
+    assert s.allows(9) and s.allows(1) and not s.allows(2)
+
+
+def test_bot_records_its_users(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    bot = RecordingBot(settings())
+    bot.store = store
+    asyncio.run(bot.handle({"update_id": 1, "message": {
+        "text": "/start", "chat": {"id": 5, "type": "private"},
+        "from": {"id": 5, "first_name": "Bo", "username": "bo", "language_code": "uk"}}}))
+    stats = store.stats()
+    assert stats["users"]["total"] == 1 and stats["users"]["bot_only"] == 1
+    assert stats["recent_users"][0]["username"] == "bo"
