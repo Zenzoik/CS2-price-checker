@@ -8,6 +8,7 @@ Each copy is integrity-checked before it counts as a backup.
 from __future__ import annotations
 
 import calendar
+import contextlib
 import logging
 import os
 import re
@@ -65,11 +66,11 @@ def latest_age(directory: Path, now: float | None = None) -> float | None:
 def backup_database(db_path: Path, directory: Path, keep: int = 14, now: float | None = None) -> Path:
     """Writes a checked copy of the database and prunes all but the newest `keep`."""
     now = time.time() if now is None else now
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     name = PREFIX + time.strftime("%Y%m%d-%H%M%S", time.gmtime(now)) + SUFFIX
     final = directory / name
     partial = directory / (name + ".partial")
     try:
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         source = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
             target = sqlite3.connect(partial)
@@ -87,7 +88,8 @@ def backup_database(db_path: Path, directory: Path, keep: int = 14, now: float |
     except (sqlite3.Error, OSError) as e:
         raise BackupError(f"backup of {db_path} failed: {e}") from e
     finally:
-        partial.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):  # must not hide the error that got us here
+            partial.unlink(missing_ok=True)
 
     for old in backups(directory, now)[:-keep] if keep > 0 else []:
         old.unlink(missing_ok=True)
