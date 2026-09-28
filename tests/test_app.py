@@ -493,7 +493,7 @@ def test_api_add_edit_delete_flow(tmp_path):
         body = await r.json()
         assert body.pop("version") and body.pop("is_admin") is False
         assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": [],
-                        "watching": [], "can_notify": False, "offer_digest": False, "sync": None,
+                        "watching": [], "can_notify": False, "offer_digest": False, "sync": None, "folders": [], "bot": None,
                         "realized": {"count": 0, "proceeds": 0.0, "cost": None, "profit": None, "unknown": 0}}
 
         found = await (await client.get("/api/search", params={"q": "breakout"}, headers=auth())).json()
@@ -509,7 +509,7 @@ def test_api_add_edit_delete_flow(tmp_path):
         items = (await r.json())["items"]
         assert items[0] | {} == {"hash_name": CASE, "name": CASE, "icon": "abc", "qty": 10,
                                  "buy_price": 3.5, "price": 4.64, "pending": False, "change_24h": None,
-                                 "change_7d": None, "liquidity": q["liquidity"]}
+                                 "change_7d": None, "liquidity": q["liquidity"], "folder": None}
 
         await client.post("/api/holdings", headers=auth(),
                           json={"hash_name": CASE, "qty": 10, "buy_price": 4.5, "mode": "add"})

@@ -348,3 +348,35 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 .sync-part + .sync-part { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--sep); }
 .sync-card .top-list { margin-top: 4px; }
 .sync-dismiss { display: block; margin: 10px 0 -4px; font-size: 14px; }
+
+/* Folders, export, share, broadcast -------------------------------------- */
+.folder-bar {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+  margin: 0 -16px 4px; padding: 2px 16px 6px;
+}
+.folder-bar::-webkit-scrollbar { display: none; }
+.folder-bar .chip { flex: none; white-space: nowrap; }
+.chip.ghost { background: transparent; color: var(--hint); }
+.foot.links { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 20px; }
+.field .folder-input {
+  flex: 1; width: auto; min-width: 0; text-align: left; font-weight: 400; font-size: 16px;
+}
+.folder-input::placeholder { color: var(--hint); }
+.folder-count { flex: none; font-size: 13px; }
+.folder-delete {
+  flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: none;
+  color: var(--down); font: inherit; cursor: pointer;
+}
+.bell.share { right: 38px; }
+.overview-hero { padding-right: 92px; }
+.share-box { margin-top: 14px; }
+.share-preview {
+  display: block; width: 100%; aspect-ratio: 4 / 5; border-radius: var(--radius);
+  background: var(--skeleton); object-fit: cover;
+}
+.broadcast-text {
+  width: 100%; border: 0; border-radius: 10px; padding: 10px 12px; resize: vertical;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 15px;
+}
+.card.broadcast .offer-actions { margin-top: 12px; }
+.offer-yes:disabled { opacity: 0.5; cursor: default; }

@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import math
+import secrets
 import time
 from collections import defaultdict, deque
 from datetime import datetime
@@ -19,8 +20,11 @@ from aiohttp import web
 
 from ..steam import ItemNotFound, PrivateInventory, ProfileNotFound, RateLimited, SteamError, parse_profile
 from .auth import AuthError, validate_init_data
-from .db import DIGESTS, ITEM_METRICS, MAX_QTY, PORTFOLIO_METRICS, QuantityLimit, Store, net_cents
-from .notify import current_value, valid_zone, zone
+from .db import (
+    DIGESTS, ITEM_METRICS, MAX_FOLDER_NAME, MAX_QTY, PORTFOLIO_METRICS, QuantityLimit, Store, net_cents,
+)
+from .export import holdings_csv, sales_csv
+from .notify import current_value, language, valid_zone, zone
 from .prices import InventoryService, PriceService, SteamBusy
 from .settings import AppSettings
 
@@ -39,6 +43,18 @@ INVENTORY_LOOKUPS_PER_USER = (3, 300)  # calls per window (seconds)
 IMPORT_TTL = 1800
 MAX_BULK = 10_000
 MAX_BODY = 256 * 1024
+# Exports and share pictures go out through the bot: a few per user per window.
+EXPORTS_PER_USER = (3, 600)
+SHARES_PER_USER = (10, 600)
+# Share pictures live in memory, long enough for Telegram to fetch them.
+SHARE_TTL = 86400
+MAX_SHARES = 200
+MAX_BROADCAST = 4000
+SHARE_TEXTS = {
+    "en": "My CS2 portfolio. Track yours: {link}",
+    "ru": "Мой портфель CS2. Следите за своим: {link}",
+    "uk": "Мій портфель CS2. Стежте за своїм: {link}",
+}
 
 CSP = "; ".join([
     "default-src 'self'",
@@ -73,6 +89,12 @@ INVENTORY_LIMITER = web.AppKey("inventory_limiter", object)
 USER_INVENTORY_LIMITER = web.AppKey("user_inventory_limiter", object)
 # user id -> (time, steamid, {hash name: qty}) of the last inventory preview
 PREVIEWS = web.AppKey("previews", dict)
+# the bot, for files and pictures sent to users (None in tests without one)
+BOT = web.AppKey("bot", object)
+EXPORT_LIMITER = web.AppKey("export_limiter", object)
+SHARE_LIMITER = web.AppKey("share_limiter", object)
+# picture id -> (time, JPEG bytes)
+SHARES = web.AppKey("shares", dict)
 # user id -> monotonic time we last wrote their last_seen (at most once a minute)
 TOUCHED = web.AppKey("touched", dict)
 TOUCH_EVERY = 60
@@ -205,6 +227,8 @@ def _portfolio_json(request: web.Request) -> dict:
         "offer_digest": store.offer_digest(request[USER_ID]),
         "realized": _realized_json(store.realized(request[USER_ID])),
         "sync": store.pending_sync(request[USER_ID]),
+        "folders": store.folders(request[USER_ID]),
+        "bot": getattr(request.app[BOT], "username", None),  # for the share card
     }
 
 
@@ -213,7 +237,13 @@ async def portfolio_history(request: web.Request) -> web.Response:
     if period not in ("7d", "30d", "all"):
         raise ApiError(400, "invalid", "Unknown history period")
     days = {"7d": 7, "30d": 30, "all": 0}[period]
-    return web.json_response(request.app[STORE].portfolio_history(request[USER_ID], days))
+    folder = request.query.get("folder")
+    folder_id = None
+    if folder:
+        if not folder.isdigit():
+            raise ApiError(400, "invalid", "Unknown folder")
+        folder_id = int(folder)
+    return web.json_response(request.app[STORE].portfolio_history(request[USER_ID], days, folder_id=folder_id))
 
 
 async def search(request: web.Request) -> web.Response:
@@ -275,7 +305,7 @@ async def save_holding(request: web.Request) -> web.Response:
             await _ensure_known(request, hash_name)
             _check_room(request)  # again: other adds may have landed while Steam answered
         try:
-            store.add_lot(user_id, hash_name, qty, buy_cents)
+            store.add_lot(user_id, hash_name, qty, buy_cents, _folder_id(body.get("folder")))
         except QuantityLimit as e:
             raise ApiError(400, "too_many", f"At most {MAX_QTY:,} of one item") from e
         _event(request, "add")
@@ -385,13 +415,178 @@ async def import_items(request: web.Request) -> web.Response:
         rows[name] = (name, preview[2][name], buy, mode == "market")
     if len(held) + len(rows) > request.app[SETTINGS].max_items:
         raise ApiError(400, "full", "Portfolio is full")
-    added = store.import_items(user_id, list(rows.values()))
+    added = store.import_items(user_id, list(rows.values()), _folder_id(body.get("folder")))
     # Remembered for the daily check: what is in this inventory now isn't "new" later.
     store.remember_inventory(user_id, preview[1], preview[2])
     if added:
         _event(request, "import", added)
     prices.wake()
     return await portfolio(request)
+
+
+async def save_folder(request: web.Request) -> web.Response:
+    """{"name"} creates a folder, {"id", "name"} renames one."""
+    body = await _json_body(request)
+    user_id = request[USER_ID]
+    request.app[WRITE_LIMITER].check(user_id)
+    name = body.get("name")
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= MAX_FOLDER_NAME \
+            or any(ord(c) < 32 for c in name):
+        raise ApiError(400, "invalid", f"A folder name has 1 to {MAX_FOLDER_NAME} characters")
+    folder_id = None if body.get("id") is None else _row_id(body.get("id"), "Unknown folder")
+    store = request.app[STORE]
+    if store.save_folder(user_id, " ".join(name.split()), folder_id) is None:
+        folders = store.folders(user_id)
+        if folder_id is not None and all(f["id"] != folder_id for f in folders):
+            raise ApiError(404, "gone", "This folder no longer exists")
+        if any(f["name"] == " ".join(name.split()) for f in folders):
+            raise ApiError(400, "folder_exists", "There is a folder with this name")
+        raise ApiError(400, "folders_full", "Too many folders")
+    return await portfolio(request)
+
+
+async def delete_folder(request: web.Request) -> web.Response:
+    body = await _json_body(request)
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    request.app[STORE].delete_folder(request[USER_ID], _row_id(body.get("id"), "Unknown folder"))
+    return await portfolio(request)
+
+
+async def move_holdings(request: web.Request) -> web.Response:
+    """{"hash_names": [...], "folder": id | null}."""
+    body = await _json_body(request)
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    names = body.get("hash_names")
+    if not isinstance(names, list) or not 1 <= len(names) <= MAX_BULK:
+        raise ApiError(400, "invalid", "Choose items to move")
+    folder = body.get("folder")
+    folder_id = None if folder is None else _row_id(folder, "Unknown folder")
+    if request.app[STORE].move_holdings(request[USER_ID], list({_hash_name(n) for n in names}), folder_id) is None:
+        raise ApiError(404, "gone", "This folder no longer exists")
+    return await portfolio(request)
+
+
+async def export(request: web.Request) -> web.Response:
+    """Sends the positions (and sales, if any) as CSV files to the user's chat with the bot."""
+    body = await _json_body(request)
+    user_id = request[USER_ID]
+    store = request.app[STORE]
+    bot = request.app[BOT]
+    if bot is None:
+        raise ApiError(503, "unavailable", "The bot is not running")
+    if body.get("write_access") is True:
+        store.set_prefs(user_id, write_access=1)
+    if not store.prefs(user_id)["write_access"]:
+        raise ApiError(400, "no_write_access", "Allow the bot to message you first")
+    request.app[EXPORT_LIMITER].check(user_id)
+    lang = store.user_language(user_id)
+    day = time.strftime("%Y-%m-%d")
+    files = [(f"cs2-portfolio-{day}.csv", holdings_csv(store, user_id, lang))]
+    sales = sales_csv(store, user_id, lang)
+    if sales is not None:
+        files.append((f"cs2-sales-{day}.csv", sales))
+    try:
+        for name, data in files:
+            await bot.send_document(user_id, name, data)
+    except Exception as e:
+        log.warning("Export to %s failed: %s", user_id, e)
+        if "forbidden" in str(e).lower():
+            store.set_prefs(user_id, write_access=0)
+        raise ApiError(502, "send_failed", "The bot could not send the file") from e
+    _event(request, "export")
+    return web.json_response({"sent": len(files)})
+
+
+async def share(request: web.Request) -> web.Response:
+    """Takes the share card (a JPEG the app drew) and makes it shareable.
+
+    ?mode=story: a public URL for shareToStory. mode=message: a prepared
+    message for shareMessage, or, when Telegram refuses that, the picture sent
+    to the user's chat to forward (then "sent" is true). mode=chat: that
+    picture straight away, for clients without shareMessage.
+    """
+    mode = request.query.get("mode")
+    if mode not in ("story", "message", "chat"):
+        raise ApiError(400, "invalid", "mode must be story, message or chat")
+    user_id = request[USER_ID]
+    data = await request.read()
+    if not 3 < len(data) <= MAX_BODY or not data.startswith(b"\xff\xd8\xff"):
+        raise ApiError(400, "invalid", "Send a JPEG picture")
+    request.app[SHARE_LIMITER].check(user_id)
+    shares = request.app[SHARES]
+    now = time.monotonic()
+    for key in [k for k, (at, _) in shares.items() if now - at > SHARE_TTL]:
+        del shares[key]
+    while len(shares) >= MAX_SHARES:
+        shares.pop(next(iter(shares)))
+    key = secrets.token_urlsafe(18)
+    shares[key] = (now, data)
+    url = f"{request.app[SETTINGS].public_url.rstrip('/')}/share/{key}.jpg"
+    _event(request, "share")
+    if mode == "story":
+        return web.json_response({"url": url, "text": _share_text(request)})
+    bot = request.app[BOT]
+    if bot is None:
+        raise ApiError(503, "unavailable", "The bot is not running")
+    if mode == "message":
+        try:
+            return web.json_response({"prepared": await bot.prepare_share(user_id, url, _share_text(request))})
+        except Exception as e:  # e.g. an older Bot API or inline sharing disabled
+            log.info("Prepared share for %s failed, sending the picture instead: %s", user_id, e)
+    try:
+        await bot.send_photo(user_id, data, _share_text(request))
+    except Exception as e:
+        log.warning("Share picture to %s failed: %s", user_id, e)
+        raise ApiError(502, "send_failed", "The bot could not send the picture") from e
+    return web.json_response({"sent": True})
+
+
+def _share_text(request: web.Request) -> str:
+    bot = request.app[BOT]
+    username = getattr(bot, "username", None)
+    link = f"https://t.me/{username}" if username else request.app[SETTINGS].public_url
+    return SHARE_TEXTS[language(request.app[STORE].user_language(request[USER_ID]))].format(link=link)
+
+
+async def shared_picture(request: web.Request) -> web.Response:
+    """Public: Telegram's servers fetch it. The name is an unguessable token."""
+    name = request.match_info["name"]
+    hit = request.app[SHARES].get(name.removesuffix(".jpg"))
+    if not name.endswith(".jpg") or hit is None or time.monotonic() - hit[0] > SHARE_TTL:
+        raise web.HTTPNotFound()
+    return web.Response(body=hit[1], content_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+async def admin_broadcast(request: web.Request) -> web.Response:
+    _admin_only(request)
+    store = request.app[STORE]
+    return web.json_response({"audience": store.broadcast_audience(), "last": store.last_broadcast()})
+
+
+async def start_broadcast(request: web.Request) -> web.Response:
+    """{"text"}: goes to everyone the bot may write to, paced by the broadcast job."""
+    _admin_only(request)
+    body = await _json_body(request)
+    text = body.get("text")
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= MAX_BROADCAST:
+        raise ApiError(400, "invalid", f"Write 1 to {MAX_BROADCAST} characters")
+    if request.app[STORE].start_broadcast(request[USER_ID], text.strip()) is None:
+        raise ApiError(409, "broadcast_running", "A broadcast is still going out")
+    log.info("Admin %s started a broadcast", request[USER_ID])
+    return await admin_broadcast(request)
+
+
+async def cancel_broadcast(request: web.Request) -> web.Response:
+    _admin_only(request)
+    running = request.app[STORE].running_broadcast()
+    if running is not None:
+        request.app[STORE].finish_broadcast(running["id"], cancelled=True)
+    return await admin_broadcast(request)
+
+
+def _admin_only(request: web.Request) -> None:
+    if request[USER_ID] not in request.app[SETTINGS].admins:
+        raise ApiError(403, "forbidden", "Admins only")
 
 
 async def sell(request: web.Request) -> web.Response:
@@ -560,8 +755,7 @@ async def save_prefs(request: web.Request) -> web.Response:
 
 
 async def admin_stats(request: web.Request) -> web.Response:
-    if request[USER_ID] not in request.app[SETTINGS].admins:
-        raise ApiError(403, "forbidden", "Admins only")
+    _admin_only(request)
     return web.json_response(request.app[STORE].stats())
 
 
@@ -644,6 +838,11 @@ def _number(value) -> float | None:
     if isinstance(value, int):
         return float(value) if abs(value) <= 10**15 else None
     return value if math.isfinite(value) else None
+
+
+def _folder_id(value) -> int | None:
+    """An optional folder for new positions; one that isn't the user's is ignored by the store."""
+    return None if value is None else _row_id(value, "Unknown folder")
 
 
 def _row_id(value, message: str) -> int:
@@ -732,11 +931,12 @@ def _holding_json(h) -> dict:
                       if h.price_cents is not None and h.week_ago_cents else None),
         "liquidity": _liquidity_json(h.buy_order_cents, h.sell_order_cents,
                                      h.buy_orders, h.sell_listings),
+        "folder": h.folder_id,
     }
 
 
 def create_app(settings: AppSettings, store: Store, prices: PriceService,
-               inventories: InventoryService | None = None) -> web.Application:
+               inventories: InventoryService | None = None, bot=None) -> web.Application:
     app = web.Application(middlewares=[security_headers, authenticate], client_max_size=MAX_BODY)
     app[SETTINGS] = settings
     # Versioned asset URLs: Telegram's WebView caches hard, a new URL cannot be stale.
@@ -754,6 +954,10 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app[USER_INVENTORY_LIMITER] = RateLimiter(*INVENTORY_LOOKUPS_PER_USER)
     app[PREVIEWS] = {}
     app[TOUCHED] = {}
+    app[BOT] = bot
+    app[EXPORT_LIMITER] = RateLimiter(*EXPORTS_PER_USER)
+    app[SHARE_LIMITER] = RateLimiter(*SHARES_PER_USER)
+    app[SHARES] = {}
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)
@@ -770,6 +974,15 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_get("/api/sales", list_sales)
     app.router.add_post("/api/sales/delete", undo_sale)
     app.router.add_post("/api/sync/dismiss", dismiss_sync)
+    app.router.add_post("/api/folders", save_folder)
+    app.router.add_post("/api/folders/delete", delete_folder)
+    app.router.add_post("/api/holdings/folder", move_holdings)
+    app.router.add_post("/api/export", export)
+    app.router.add_post("/api/share", share)
+    app.router.add_get("/share/{name}", shared_picture)
+    app.router.add_get("/api/admin/broadcast", admin_broadcast)
+    app.router.add_post("/api/admin/broadcast", start_broadcast)
+    app.router.add_post("/api/admin/broadcast/cancel", cancel_broadcast)
     app.router.add_get("/api/alerts", list_alerts)
     app.router.add_post("/api/alerts", save_alert)
     app.router.add_post("/api/alerts/delete", delete_alert)

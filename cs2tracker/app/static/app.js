@@ -142,6 +142,26 @@
       syncNone: "Import your inventory once (paste your Steam profile link in search) to have it checked daily.",
       err_sell_qty: "You don't have that many.", err_no_sync: "Import your inventory first.",
       act_sell: "Sales recorded",
+      folders: "Folders", allFolders: "All", noFolder: "No folder", folderLabel: "Folder", newFolder: "New folder…",
+      newFolderName: "New folder", addFolder: "Add folder", deleteFolder: "Delete folder",
+      deleteFolderConfirm: "Delete the folder “{name}”? Its items stay in the portfolio.",
+      foldersHint: "Group items, for example by Steam account or plan. An item is in one folder at a time; rename a folder by editing its name.",
+      folderCount: "{n} items", moveTo: "Move to…", emptyFolder: "No items in this folder yet. Open an item to move it here, or use Select in the Portfolio tab.",
+      exportCsv: "Export to CSV", exported: "The bot sent you the file.",
+      share: "Share", shareTitle: "Share your portfolio", showAmounts: "With amounts", hideAmounts: "Percent only",
+      shareHint: "Amounts stay hidden unless you choose to show them.", shareChat: "Send to a chat", shareStory: "Share to story",
+      shareSent: "The bot sent you the picture: forward it to anyone.", cardTitle: "CS2 portfolio", cardItems: "{n} items",
+      cardFooter: "Track yours in Telegram", cardProfit: "Profit",
+      broadcast: "Message to all users", broadcastPlaceholder: "Text of the message",
+      broadcastAudience: "Goes to {n} users who allowed messages, with an “Open portfolio” button.",
+      broadcastSend: "Send to {n}", broadcastConfirm: "Send this message to {n} users?",
+      broadcastProgress: "Sending: {done} of {total}, {failed} failed", broadcastCancel: "Stop",
+      broadcastDone: "Last one: {sent} delivered, {failed} failed · {ago}", broadcastCancelled: "Last one was stopped after {done} of {total}",
+      err_folder_exists: "There is already a folder with this name.", err_folders_full: "At most 10 folders.",
+      err_send_failed: "The bot couldn't send it. Press Start in the bot chat and try again.",
+      err_no_write_access: "Allow the bot to message you first.", err_unavailable: "Not available right now.",
+      err_broadcast_running: "A broadcast is still going out.",
+      act_export: "Exports", act_share: "Shares",
     },
     ru: {
       addItem: "Добавить предмет", add: "Добавить", save: "Сохранить", boughtMore: "Докупить", remove: "Убрать",
@@ -272,6 +292,26 @@
       syncNone: "Импортируйте инвентарь один раз (вставьте ссылку на профиль Steam в поиск), и он будет проверяться каждый день.",
       err_sell_qty: "У вас нет столько.", err_no_sync: "Сначала импортируйте инвентарь.",
       act_sell: "Отмечено продаж",
+      folders: "Папки", allFolders: "Все", noFolder: "Без папки", folderLabel: "Папка", newFolder: "Новая папка…",
+      newFolderName: "Новая папка", addFolder: "Добавить папку", deleteFolder: "Удалить папку",
+      deleteFolderConfirm: "Удалить папку «{name}»? Предметы останутся в портфеле.",
+      foldersHint: "Группируйте предметы, например по аккаунтам Steam или планам. Предмет лежит в одной папке; чтобы переименовать папку, измените её название.",
+      folderCount: "предметов: {n}", moveTo: "Переместить…", emptyFolder: "В этой папке пока пусто. Откройте предмет, чтобы переместить его сюда, или нажмите «Выбрать» во вкладке «Портфель».",
+      exportCsv: "Экспорт в CSV", exported: "Бот прислал вам файл.",
+      share: "Поделиться", shareTitle: "Поделиться портфелем", showAmounts: "С суммами", hideAmounts: "Только проценты",
+      shareHint: "Суммы скрыты, пока вы сами не решите их показать.", shareChat: "Отправить в чат", shareStory: "В историю",
+      shareSent: "Бот прислал вам картинку — перешлите её кому угодно.", cardTitle: "Портфель CS2", cardItems: "предметов: {n}",
+      cardFooter: "Следите за своим в Telegram", cardProfit: "Прибыль",
+      broadcast: "Сообщение всем пользователям", broadcastPlaceholder: "Текст сообщения",
+      broadcastAudience: "Получат {n} пользователей, разрешивших сообщения, с кнопкой «Открыть портфель».",
+      broadcastSend: "Отправить {n}", broadcastConfirm: "Отправить это сообщение {n} пользователям?",
+      broadcastProgress: "Отправка: {done} из {total}, ошибок: {failed}", broadcastCancel: "Остановить",
+      broadcastDone: "Последнее: доставлено {sent}, ошибок {failed} · {ago}", broadcastCancelled: "Последнее остановлено после {done} из {total}",
+      err_folder_exists: "Папка с таким названием уже есть.", err_folders_full: "Не больше 10 папок.",
+      err_send_failed: "Бот не смог отправить. Нажмите «Старт» в чате с ботом и попробуйте снова.",
+      err_no_write_access: "Сначала разрешите боту писать вам.", err_unavailable: "Сейчас недоступно.",
+      err_broadcast_running: "Предыдущая рассылка ещё идёт.",
+      act_export: "Экспорты", act_share: "Поделились",
     },
     uk: {
       addItem: "Додати предмет", add: "Додати", save: "Зберегти", boughtMore: "Докупити", remove: "Прибрати",
@@ -402,6 +442,26 @@
       syncNone: "Імпортуйте інвентар один раз (вставте посилання на профіль Steam у пошук), і він перевірятиметься щодня.",
       err_sell_qty: "У вас немає стільки.", err_no_sync: "Спочатку імпортуйте інвентар.",
       act_sell: "Позначено продажів",
+      folders: "Папки", allFolders: "Усі", noFolder: "Без папки", folderLabel: "Папка", newFolder: "Нова папка…",
+      newFolderName: "Нова папка", addFolder: "Додати папку", deleteFolder: "Видалити папку",
+      deleteFolderConfirm: "Видалити папку «{name}»? Предмети залишаться в портфелі.",
+      foldersHint: "Групуйте предмети, наприклад за акаунтами Steam або планами. Предмет лежить в одній папці; щоб перейменувати папку, змініть її назву.",
+      folderCount: "предметів: {n}", moveTo: "Перемістити…", emptyFolder: "У цій папці поки порожньо. Відкрийте предмет, щоб перемістити його сюди, або натисніть «Вибрати» у вкладці «Портфель».",
+      exportCsv: "Експорт у CSV", exported: "Бот надіслав вам файл.",
+      share: "Поділитися", shareTitle: "Поділитися портфелем", showAmounts: "Із сумами", hideAmounts: "Лише відсотки",
+      shareHint: "Суми приховані, доки ви самі не вирішите їх показати.", shareChat: "Надіслати в чат", shareStory: "В історію",
+      shareSent: "Бот надіслав вам картинку — перешліть її будь-кому.", cardTitle: "Портфель CS2", cardItems: "предметів: {n}",
+      cardFooter: "Стежте за своїм у Telegram", cardProfit: "Прибуток",
+      broadcast: "Повідомлення всім користувачам", broadcastPlaceholder: "Текст повідомлення",
+      broadcastAudience: "Отримають {n} користувачів, які дозволили повідомлення, з кнопкою «Відкрити портфель».",
+      broadcastSend: "Надіслати {n}", broadcastConfirm: "Надіслати це повідомлення {n} користувачам?",
+      broadcastProgress: "Надсилання: {done} з {total}, помилок: {failed}", broadcastCancel: "Зупинити",
+      broadcastDone: "Останнє: доставлено {sent}, помилок {failed} · {ago}", broadcastCancelled: "Останнє зупинено після {done} з {total}",
+      err_folder_exists: "Папка з такою назвою вже є.", err_folders_full: "Не більше 10 папок.",
+      err_send_failed: "Бот не зміг надіслати. Натисніть «Старт» у чаті з ботом і спробуйте знову.",
+      err_no_write_access: "Спершу дозвольте боту писати вам.", err_unavailable: "Зараз недоступно.",
+      err_broadcast_running: "Попередня розсилка ще триває.",
+      act_export: "Експорти", act_share: "Поділилися",
     },
   };
   const userLang = ((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code)
@@ -624,15 +684,16 @@
 
   // -- API ----------------------------------------------------------------------
 
-  async function api(path, { method = "GET", body, signal } = {}) {
+  // raw: a Blob sent as is (the share picture), with its own type.
+  async function api(path, { method = "GET", body, raw, signal } = {}) {
     let res;
     let data = null;
     try {
       res = await fetch(path, {
         method, signal,
         headers: Object.assign({ Authorization: `tma ${initData}` },
-          body ? { "Content-Type": "application/json" } : {}),
-        body: body ? JSON.stringify(body) : undefined,
+          raw ? { "Content-Type": raw.type } : body ? { "Content-Type": "application/json" } : {}),
+        body: raw || (body ? JSON.stringify(body) : undefined),
       });
       data = await res.json().catch(() => null);
     } catch (e) {
@@ -671,6 +732,9 @@
     busy: false,
     back: null,
     selected: null, // Set of hash names while Home is in selection mode
+    folder: (() => { // the folder Home shows (null: all), remembered per device
+      try { return JSON.parse(localStorage.getItem("folder") || "null"); } catch (e) { return null; }
+    })(),
   };
 
   function setPortfolio(p) {
@@ -680,6 +744,7 @@
     state.holdingsKey = key;
     state.portfolio = p;
     state.currency = p.currency;
+    if (state.folder != null && !(p.folders || []).some((f) => f.id === state.folder)) setFolder(null);
     state.loadError = null;
     state.stale = null;
   }
@@ -722,20 +787,27 @@
   // after the holdings or the period change. Polls never touch it otherwise.
   const HISTORY_TTL = 60000;
 
+  // History is per period and folder: an answer for another pair is shown dimmed.
+  function historyKey() {
+    return `${state.period}|${state.folder == null ? "" : state.folder}`;
+  }
+
   function historyDue() {
-    return !state.historyLoading && (!state.history || state.history.period !== state.period
+    return !state.historyLoading && (!state.history || state.history.key !== historyKey()
       || Date.now() - state.historyAt > HISTORY_TTL);
   }
 
   async function loadHistory() {
     const request = ++state.historyRequest;
     const period = state.period;
+    const key = historyKey();
     state.historyLoading = true;
     let redraw = true;
     try {
-      const data = await api(`/api/portfolio/history?period=${period}`);
+      const folder = state.folder == null ? "" : `&folder=${state.folder}`;
+      const data = await api(`/api/portfolio/history?period=${period}${folder}`);
       if (request !== state.historyRequest) return;
-      const next = { period, points: data.points, change: data.change, change_ratio: data.change_ratio };
+      const next = { period, key, points: data.points, change: data.change, change_ratio: data.change_ratio };
       // Same answer as on screen: leave the chart (and the user's pick) alone.
       redraw = state.historyError || JSON.stringify(next) !== JSON.stringify(state.history);
       state.history = next;
@@ -908,7 +980,7 @@
 
   function chartSection() {
     const history = state.history;
-    const current = history && history.period === state.period;
+    const current = history && history.key === historyKey();
     // A single day is not a line yet: say so here once, rather than draw a lone dot.
     if (history && history.points.length > 1) {
       // While another period loads, the old line stays (dimmed) instead of jumping.
@@ -930,7 +1002,7 @@
   // Items added or removed are left out, so a purchase never looks like a gain.
   function periodChange() {
     const history = state.history;
-    if (!history || history.period !== state.period) {
+    if (!history || history.key !== historyKey()) {
       return h("div", { class: "overview-change" }, h("span", { class: "sk sk-line change" }));
     }
     if (history.change == null) return null; // the chart area says why
@@ -944,12 +1016,17 @@
   function showOverview({ keepScroll = false } = {}) {
     main.set(t("addItem"), showSearch);
     const p = state.portfolio;
-    const { value, trackedValue, pricedCost, noBuy, tracked, unpriced } = totals(p.items);
-    const pending = p.items.filter((it) => it.pending).length;
+    const items = visibleItems(p);
+    if (!items.length) {
+      mount([folderBar(p), h("p", { class: "message" }, t("emptyFolder")), bottomNav()], { keepScroll });
+      return;
+    }
+    const { value, trackedValue, pricedCost, noBuy, tracked, unpriced } = totals(items);
+    const pending = items.filter((it) => it.pending).length;
     if (pending) followPendingPrices();
     if (historyDue()) loadHistory();
     const pnl = trackedValue - pricedCost;
-    const top = [...p.items].filter((it) => it.price != null)
+    const top = [...items].filter((it) => it.price != null)
       .sort((a, b) => net(b.price) * b.qty - net(a.price) * a.qty).slice(0, 5);
     const range = h("div", { class: "chart-ranges", role: "group", "aria-label": t("period") },
       ["7d", "30d", "all"].map((period) =>
@@ -966,17 +1043,19 @@
     if (unpriced - pending > 0) foot.push(t("unpriced", { n: unpriced - pending }));
     const chartFocused = document.activeElement && document.activeElement.classList.contains("chart-plot-area");
     mount([
+      folderBar(p),
       h("section", { class: "overview-hero" },
+        shareButton(),
         bellButton(),
         h("div", { class: "hero-value num" }, money(value)),
         periodChange(),
         pricedCost > 0 && h("div", { class: "hero-sub hint num" }, `${t("profitLabel")} `,
           h("span", { class: trend(pnl / pricedCost) }, `${money(pnl, true)} · ${percent(pnl / pricedCost)}`),
-          noBuy > 0 && ` · ${t("pnlScope", { n: tracked, total: p.items.length })}`),
-        realizedLine(p.realized),
+          noBuy > 0 && ` · ${t("pnlScope", { n: tracked, total: items.length })}`),
+        state.folder == null && realizedLine(p.realized),
         pending > 0 && h("div", { class: "progress" },
-          h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
-          progressBar((p.items.length - pending) / p.items.length))),
+          h("div", { class: "hero-sub hint num" }, t("pricing", { n: items.length - pending, total: items.length })),
+          progressBar((items.length - pending) / items.length))),
       syncCard(p.sync),
       p.offer_digest && digestOffer(),
       chartSection(),
@@ -1067,41 +1146,47 @@
       return;
     }
 
-    const { value, trackedValue, pricedCost, cost, unpriced, noBuy, tracked } = totals(p.items);
-    const pending = p.items.filter((i) => i.pending).length;
+    const shown = visibleItems(p);
+    if (!shown.length) {
+      state.selected = null;
+      mount([folderBar(p), h("p", { class: "message" }, t("emptyFolder")), portfolioLinks(p), bottomNav()], { keepScroll });
+      return;
+    }
+    const { value, trackedValue, pricedCost, cost, unpriced, noBuy, tracked } = totals(shown);
+    const pending = shown.filter((i) => i.pending).length;
     if (pending) followPendingPrices();
     const pnl = trackedValue - pricedCost;
-    const items = sortItems(p.items);
+    const items = sortItems(shown);
 
     const foot = [`${t(`kind_${p.price_kind}`)}, ${t("afterFee")}`];
     if (p.updated_at) foot.push(t("updated", { ago: ago(p.updated_at) }));
     if (unpriced - pending > 0) foot.push(t("unpriced", { n: unpriced - pending }));
 
     mount([
+      !state.selected && folderBar(p),
       h("section", { class: "hero" },
         !state.selected && bellButton(),
         h("div", { class: "hero-value num" }, money(value)),
         pricedCost > 0 && h("div", { class: `hero-pnl num ${trend(pnl / pricedCost)}` },
           `${money(pnl, true)} · ${percent(pnl / pricedCost)}`,
           // Say what the profit covers when some items have no price paid.
-          noBuy > 0 && h("span", { class: "hint scope" }, ` · ${t("pnlScope", { n: tracked, total: p.items.length })}`)),
+          noBuy > 0 && h("span", { class: "hint scope" }, ` · ${t("pnlScope", { n: tracked, total: shown.length })}`)),
         // Invested matches what value and P&L cover; unpriced items are listed apart.
         (pricedCost > 0 || cost > 0) && h("div", { class: "hero-sub hint num" }, `${t("invested")} ${money(pricedCost)}`,
           cost > pricedCost && ` ${t("unpricedCost", { cost: money(cost - pricedCost) })}`),
         noBuy > 0 && pricedCost === 0 && h("div", { class: "hero-sub hint" }, t("withoutBuy", { n: noBuy })),
-        !state.selected && realizedLine(p.realized),
+        !state.selected && state.folder == null && realizedLine(p.realized),
         pending > 0 && h("div", { class: "progress" },
-          h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
-          progressBar((p.items.length - pending) / p.items.length)),
+          h("div", { class: "hero-sub hint num" }, t("pricing", { n: shown.length - pending, total: shown.length })),
+          progressBar((shown.length - pending) / shown.length)),
       ),
       !state.selected && syncCard(p.sync),
-      toolbar(p.items),
+      toolbar(shown),
       h("ul", { class: "list" }, items.map(homeRow)),
       ...(!state.selected && watchSection(p) || []),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
-      p.is_admin && !state.selected && h("p", { class: "foot" },
-        h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
+      !state.selected && portfolioLinks(p),
       !state.selected && bottomNav(),
     ], { keepScroll });
   }
@@ -1179,6 +1264,7 @@
           haptic.tap();
           showHome({ keepScroll: true });
         }),
+        state.selected.size > 0 && moveSelect(),
         link(t("done"), exitSelection));
     }
     return h("div", { class: "toolbar" },
@@ -1579,6 +1665,7 @@
         body: {
           steamid: imp.data.steamid,
           price_mode: imp.mode,
+          folder: state.folder,
           items: [...imp.selected].map((name) => ({ hash_name: name, buy_price: prices.get(name) })),
         },
       });
@@ -2255,6 +2342,453 @@
       h("button", { type: "button", class: "link-btn sync-dismiss", onclick: dismiss }, t("syncDismiss")));
   }
 
+  // -- folders ------------------------------------------------------------------
+  // A folder is a label on a position ("Main", "Alt", "Long-term"). Home and the
+  // Portfolio tab show one folder at a time; totals, the chart and the top list
+  // follow it. Realized profit and alerts stay whole-portfolio.
+
+  function setFolder(id) {
+    state.folder = id;
+    state.chartDay = null;
+    try { localStorage.setItem("folder", JSON.stringify(id)); } catch (e) { /* per-device nicety only */ }
+  }
+
+  function visibleItems(p) {
+    return state.folder == null ? p.items : p.items.filter((i) => i.folder === state.folder);
+  }
+
+  function folderBar(p) {
+    if (!p.folders || !p.folders.length) return null;
+    const chip = (id, label) => h("button", {
+      type: "button", class: `chip${state.folder === id ? " on" : ""}`, "aria-pressed": String(state.folder === id),
+      onclick: () => {
+        if (state.folder === id) return;
+        setFolder(id);
+        state.selected = null;
+        haptic.tap();
+        showHome();
+      },
+    }, label);
+    return h("nav", { class: "folder-bar", "aria-label": t("folders") },
+      chip(null, t("allFolders")),
+      p.folders.map((f) => chip(f.id, f.name)),
+      h("button", { type: "button", class: "chip ghost", "aria-label": t("folders"), onclick: () => {
+        haptic.tap();
+        showFolders(() => showHome());
+      } }, "⋯"));
+  }
+
+  // Under the Portfolio list: folders, export and (for admins) statistics.
+  function portfolioLinks(p) {
+    const link = (text, onclick) => h("button", { type: "button", class: "link-btn", onclick }, text);
+    return h("p", { class: "foot links" },
+      link(t("folders"), () => { haptic.tap(); showFolders(() => showHome()); }),
+      p.items.length > 0 && link(t("exportCsv"), exportCsv),
+      p.is_admin && link(t("stats"), showAdmin));
+  }
+
+  function folderOptions(current, { placeholder = null, create = true } = {}) {
+    const folders = (state.portfolio && state.portfolio.folders) || [];
+    return [
+      placeholder && h("option", { value: "", selected: true, disabled: true }, placeholder),
+      h("option", { value: "none", selected: !placeholder && current == null }, t("noFolder")),
+      ...folders.map((f) => h("option", { value: String(f.id), selected: !placeholder && current === f.id }, f.name)),
+      create && h("option", { value: "new" }, t("newFolder")),
+    ];
+  }
+
+  async function moveTo(names, folder) {
+    setPortfolio(await api("/api/holdings/folder", { method: "POST", body: { hash_names: names, folder } }));
+  }
+
+  // On an item's screen: which folder it is in; saved as soon as it changes.
+  function folderField(item, reopen) {
+    const select = h("select", { class: "hour-select", "aria-label": t("folderLabel") }, folderOptions(item.folder));
+    select.addEventListener("change", async () => {
+      if (select.value === "new") { showFolders(reopen); return; }
+      try {
+        await moveTo([item.hash_name], select.value === "none" ? null : Number(select.value));
+        haptic.ok();
+      } catch (e) {
+        haptic.fail();
+        alertUser(errorText(e));
+        if (app.contains(select)) reopen();
+      }
+    });
+    return h("div", { class: "form spaced" }, h("label", { class: "field" }, h("span", {}, t("folderLabel")), select));
+  }
+
+  // In selection mode: move what is selected.
+  function moveSelect() {
+    const select = h("select", { class: "sort-select", "aria-label": t("moveTo") },
+      folderOptions(null, { placeholder: t("moveTo") }));
+    select.addEventListener("change", async () => {
+      const names = [...(state.selected || [])];
+      if (select.value === "new") { showFolders(() => showHome()); return; }
+      if (!names.length || state.busy) return;
+      state.busy = true;
+      try {
+        await moveTo(names, select.value === "none" ? null : Number(select.value));
+        haptic.ok();
+        state.selected = null;
+      } catch (e) {
+        haptic.fail();
+        alertUser(errorText(e));
+      }
+      state.busy = false;
+      if (state.screen === "home") showHome({ keepScroll: true });
+    });
+    return select;
+  }
+
+  function showFolders(backTo) {
+    state.screen = "folders";
+    state.back = backTo;
+    setBack(true);
+    secondary.set(null);
+    const fresh = h("input", { type: "text", class: "folder-input", maxlength: "32", enterkeyhint: "done",
+      autocomplete: "off", placeholder: t("newFolderName"), "aria-label": t("newFolderName") });
+
+    async function send(path, body) {
+      if (state.busy) return false;
+      state.busy = true;
+      try {
+        setPortfolio(await api(path, { method: "POST", body }));
+        haptic.ok();
+        return true;
+      } catch (e) {
+        haptic.fail();
+        alertUser(errorText(e));
+        return false;
+      } finally {
+        state.busy = false;
+      }
+    }
+
+    function render() {
+      const folders = state.portfolio.folders || [];
+      const rows = folders.map((f) => {
+        const input = h("input", { type: "text", class: "folder-input", maxlength: "32", enterkeyhint: "done",
+          autocomplete: "off", "aria-label": t("folderLabel") });
+        input.value = f.name;
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
+        input.addEventListener("change", async () => {
+          const name = input.value.trim();
+          if (!name || name === f.name) { input.value = f.name; return; }
+          if (!(await send("/api/folders", { id: f.id, name }))) input.value = f.name;
+        });
+        return h("div", { class: "field folder-row" }, input,
+          h("span", { class: "hint num folder-count" }, t("folderCount", { n: f.count })),
+          h("button", { type: "button", class: "folder-delete", "aria-label": t("deleteFolder"), onclick: async () => {
+            if (!(await confirmUser(t("deleteFolderConfirm", { name: f.name })))) return;
+            if (state.folder === f.id) setFolder(null);
+            if (await send("/api/folders/delete", { id: f.id }) && state.screen === "folders") render();
+          } }, "✕"));
+      });
+      mount([
+        h("h1", { class: "screen-title" }, t("folders")),
+        h("p", { class: "note" }, t("foldersHint")),
+        rows.length > 0 && h("div", { class: "form spaced" }, rows),
+        h("div", { class: "form spaced" }, h("div", { class: "field" }, fresh)),
+      ]);
+      update();
+    }
+
+    async function add() {
+      const name = fresh.value.trim();
+      if (!name) return;
+      if (await send("/api/folders", { name })) {
+        fresh.value = "";
+        if (state.screen === "folders") render();
+      }
+    }
+    function update() {
+      main.set(t("addFolder"), add, { enabled: fresh.value.trim() !== "" && (state.portfolio.folders || []).length < 10 });
+    }
+    fresh.addEventListener("input", update);
+    fresh.addEventListener("keydown", (e) => { if (e.key === "Enter") { fresh.blur(); add(); } });
+    render();
+    if (!(state.portfolio.folders || []).length) setTimeout(() => fresh.focus(), 50);
+  }
+
+  // -- export ---------------------------------------------------------------------
+  // The bot sends the CSV files to the chat: that works in every Telegram client.
+
+  async function exportCsv() {
+    if (state.busy) return;
+    haptic.tap();
+    const granted = await ensureWriteAccess();
+    state.busy = true;
+    try {
+      await api("/api/export", { method: "POST", body: { write_access: granted === true ? true : undefined } });
+      haptic.ok();
+      alertUser(t("exported"));
+    } catch (e) {
+      haptic.fail();
+      alertUser(errorText(e));
+    }
+    state.busy = false;
+  }
+
+  // -- share card -----------------------------------------------------------------
+  // Drawn here on a canvas (so it matches the app, with no image library on the
+  // server), uploaded as a JPEG, and shared as a message or to a story. Amounts
+  // are only on it when the user asks for them.
+
+  function shareButton() {
+    const svg = svgEl("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
+    svgEl("path", { d: "M12 15V4M7.5 8.5 12 4l4.5 4.5M5 13v6h14v-6" }, svg);
+    return h("button", { type: "button", class: "bell share", "aria-label": t("share"), onclick: () => {
+      haptic.tap();
+      showShare();
+    } }, svg);
+  }
+
+  const canStory = () => nativeUi && tg.isVersionAtLeast("7.8") && ["android", "ios"].includes(tg.platform);
+
+  function loadIcon(icon) {
+    return new Promise((resolve) => {
+      if (!icon) { resolve(null); return; }
+      const img = new Image();
+      img.crossOrigin = "anonymous"; // without CORS it fails to load rather than taint the canvas
+      const timer = setTimeout(() => resolve(null), 2500);
+      img.onload = () => { clearTimeout(timer); resolve(img); };
+      img.onerror = () => { clearTimeout(timer); resolve(null); };
+      img.src = `${ICON_BASE}${encodeURIComponent(icon)}/96fx96f`;
+    });
+  }
+
+  async function drawCard(amounts) {
+    const W = 1080, H = 1350, X = 80;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const g = canvas.getContext("2d");
+    const font = (weight, size) => `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    const colors = { up: "#4cd07d", down: "#ff6b61", hint: "#9aa0aa", fg: "#ffffff" };
+    const tone = (ratio) => (ratio > 0.0005 ? colors.up : ratio < -0.0005 ? colors.down : colors.hint);
+    const fit = (text, max) => {
+      if (g.measureText(text).width <= max) return text;
+      let s = text;
+      while (s.length > 1 && g.measureText(`${s}…`).width > max) s = s.slice(0, -1);
+      return `${s.trimEnd()}…`;
+    };
+
+    const bg = g.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, "#1a1d26");
+    bg.addColorStop(1, "#0b0c10");
+    g.fillStyle = bg;
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = themeColor("button_color", "#2481cc");
+    g.fillRect(0, 0, W, 14);
+
+    const p = state.portfolio;
+    const items = visibleItems(p);
+    const folder = state.folder != null && (p.folders || []).find((f) => f.id === state.folder);
+    const { value, trackedValue, pricedCost } = totals(items);
+    const pnl = trackedValue - pricedCost;
+    const ratio = pricedCost > 0 ? pnl / pricedCost : null;
+
+    g.textBaseline = "alphabetic";
+    g.fillStyle = colors.hint;
+    g.font = font(600, 40);
+    g.fillText(fit(t("cardTitle") + (folder ? ` · ${folder.name}` : ""), W - 2 * X), X, 130);
+
+    // The headline: the value when amounts are on, else the profit in percent.
+    let y = 290;
+    g.font = font(800, 128);
+    if (amounts) {
+      g.fillStyle = colors.fg;
+      g.fillText(fit(money(value), W - 2 * X), X, y);
+      if (ratio != null) {
+        y += 80;
+        g.font = font(600, 52);
+        g.fillStyle = tone(ratio);
+        g.fillText(fit(`${t("cardProfit")} ${money(pnl, true)} · ${percent(ratio)}`, W - 2 * X), X, y);
+      }
+    } else if (ratio != null) {
+      g.fillStyle = tone(ratio);
+      g.fillText(percent(ratio), X, y);
+      y += 70;
+      g.font = font(500, 44);
+      g.fillStyle = colors.hint;
+      g.fillText(t("cardProfit"), X, y);
+    } else {
+      g.fillStyle = colors.fg;
+      g.fillText(t("cardItems", { n: items.length }), X, y);
+    }
+    const history = state.history;
+    if (history && history.key === historyKey() && history.change_ratio != null) {
+      y += 70;
+      g.font = font(500, 44);
+      g.fillStyle = tone(history.change_ratio);
+      g.fillText(`${t(`range_${state.period}`)}: ${percent(history.change_ratio)}`, X, y);
+    }
+
+    // The top five by value: name, and the profit on the price paid (or the day's move).
+    const top = [...items].filter((it) => it.price != null)
+      .sort((a, b) => net(b.price) * b.qty - net(a.price) * a.qty).slice(0, 5);
+    const icons = await Promise.all(top.map((it) => loadIcon(it.icon)));
+    y = Math.max(y + 80, 520);
+    const ROW = 120;
+    top.forEach((it, i) => {
+      const rowY = y + i * ROW;
+      g.fillStyle = "rgba(255, 255, 255, 0.06)";
+      g.beginPath();
+      if (g.roundRect) g.roundRect(X, rowY, W - 2 * X, ROW - 16, 24); else g.rect(X, rowY, W - 2 * X, ROW - 16);
+      g.fill();
+      if (icons[i]) g.drawImage(icons[i], X + 18, rowY + 6, 92, 92);
+      else {
+        g.fillStyle = "rgba(255, 255, 255, 0.08)";
+        g.beginPath();
+        if (g.roundRect) g.roundRect(X + 22, rowY + 10, 84, 84, 16); else g.rect(X + 22, rowY + 10, 84, 84);
+        g.fill();
+      }
+      const gain = it.buy_price > 0 ? net(it.price) / it.buy_price - 1 : it.change_24h;
+      const side = gain == null ? "" : percent(gain);
+      g.font = font(600, 44);
+      const sideWidth = side ? g.measureText(side).width : 0;
+      g.fillStyle = gain == null ? colors.hint : tone(gain);
+      if (side) g.fillText(side, W - X - 28 - sideWidth, rowY + (amounts ? 50 : 66));
+      if (amounts) {
+        g.font = font(500, 34);
+        g.fillStyle = colors.hint;
+        const worth = money(net(it.price) * it.qty);
+        g.fillText(worth, W - X - 28 - g.measureText(worth).width, rowY + 90);
+      }
+      g.font = font(500, 42);
+      g.fillStyle = colors.fg;
+      g.fillText(fit(it.name, W - 2 * X - 170 - Math.max(sideWidth, 200)), X + 136, rowY + 66);
+    });
+
+    g.font = font(600, 38);
+    g.fillStyle = colors.fg;
+    g.fillText(t("cardFooter"), X, H - 96);
+    g.font = font(500, 38);
+    g.fillStyle = themeColor("button_color", "#2481cc");
+    g.fillText(p.bot ? `t.me/${p.bot}` : location.host, X, H - 48);
+    return canvas;
+  }
+
+  function jpeg(canvas) {
+    const at = (quality) => new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    return (async () => {
+      for (const quality of [0.88, 0.75, 0.6]) {
+        const blob = await at(quality);
+        if (blob && blob.size <= 240 * 1024) return blob; // the server takes up to 256 KB
+      }
+      return null;
+    })();
+  }
+
+  function showShare() {
+    state.screen = "share";
+    state.back = () => showHome();
+    setBack(true);
+    let amounts = false;
+    let canvas = null;
+    let drawing = 0;
+    const preview = h("img", { class: "share-preview", alt: t("shareTitle") });
+    const box = h("div", { class: "share-box" }, preview);
+
+    async function redraw() {
+      const run = ++drawing;
+      const next = await drawCard(amounts);
+      if (run !== drawing || !app.contains(preview)) return;
+      canvas = next;
+      preview.src = canvas.toDataURL("image/jpeg", 0.8);
+      buttons();
+    }
+
+    function buttons() {
+      const ready = !!canvas && !state.busy;
+      main.set(t("shareChat"), () => send(nativeUi && tg.isVersionAtLeast("8.0") ? "message" : "chat"),
+        { enabled: ready, busy: state.busy });
+      secondary.set(canStory() ? t("shareStory") : null, () => send("story"), { enabled: ready });
+    }
+
+    async function send(mode) {
+      if (state.busy || !canvas) return;
+      state.busy = true;
+      buttons();
+      try {
+        const blob = await jpeg(canvas);
+        if (!blob) throw Object.assign(new Error("too big"), { code: "generic" });
+        const data = await api(`/api/share?mode=${mode}`, { method: "POST", raw: blob });
+        haptic.ok();
+        if (data.prepared) call(() => tg.shareMessage(data.prepared), "8.0");
+        else if (data.url) call(() => tg.shareToStory(data.url, { text: data.text.slice(0, 200) }), "7.8");
+        else if (data.sent) alertUser(t("shareSent"));
+      } catch (e) {
+        haptic.fail();
+        alertUser(errorText(e));
+      }
+      state.busy = false;
+      if (app.contains(preview)) buttons();
+    }
+
+    mount([
+      h("h1", { class: "screen-title" }, t("shareTitle")),
+      segmentedControl([[false, t("hideAmounts")], [true, t("showAmounts")]], amounts, (v) => { amounts = v; redraw(); },
+        t("shareTitle")),
+      h("p", { class: "note" }, t("shareHint")),
+      box,
+    ]);
+    buttons();
+    redraw();
+  }
+
+  // -- admin: broadcast -----------------------------------------------------------
+
+  function broadcastSection() {
+    const box = h("div", {});
+    let text = "";
+    const load = () => api("/api/admin/broadcast").then((d) => {
+      if (state.screen === "admin" && box.isConnected) render(d);
+    }).catch(() => {});
+
+    function render(d) {
+      const last = d.last;
+      const running = !!last && !last.finished_at;
+      const done = last ? last.sent + last.failed : 0;
+      const input = h("textarea", { class: "broadcast-text", rows: "5", maxlength: "4000",
+        placeholder: t("broadcastPlaceholder"), "aria-label": t("broadcast"), disabled: running });
+      input.value = text;
+      const send = h("button", { type: "button", class: "offer-yes", disabled: running || !text.trim() || !d.audience,
+        onclick: async () => {
+          if (!text.trim() || !(await confirmUser(t("broadcastConfirm", { n: d.audience })))) return;
+          try {
+            render(await api("/api/admin/broadcast", { method: "POST", body: { text } }));
+            text = "";
+            haptic.ok();
+          } catch (e) {
+            haptic.fail();
+            alertUser(errorText(e));
+          }
+        } }, t("broadcastSend", { n: d.audience }));
+      input.addEventListener("input", () => {
+        text = input.value;
+        send.disabled = running || !text.trim() || !d.audience;
+      });
+      const status = last && (running ? t("broadcastProgress", { done, total: last.total, failed: last.failed })
+        : last.cancelled ? t("broadcastCancelled", { done, total: last.total })
+        : t("broadcastDone", { sent: last.sent, failed: last.failed, ago: ago(last.finished_at) }));
+      box.replaceChildren(
+        h("div", { class: "section-title hint" }, t("broadcast")),
+        h("div", { class: "card broadcast" },
+          input,
+          h("p", { class: "note" }, t("broadcastAudience", { n: d.audience })),
+          h("div", { class: "offer-actions" }, send,
+            running && h("button", { type: "button", class: "link-btn", onclick: async () => {
+              try { render(await api("/api/admin/broadcast/cancel", { method: "POST", body: {} })); } catch (e) { alertUser(errorText(e)); }
+            } }, t("broadcastCancel"))),
+          status && h("p", { class: "note num" }, status)));
+      if (running) setTimeout(load, 3000);
+    }
+    load();
+    return box;
+  }
+
   // -- screen: admin statistics ---------------------------------------------
   // Only reachable for ids in CS2BOT_ADMINS; the server checks it again.
 
@@ -2267,7 +2801,7 @@
     const box = h("div", {}, h("section", { class: "hero" }, h("div", { class: "sk sk-hero" })));
     mount([box]);
     api("/api/admin/stats").then((data) => {
-      if (state.screen === "admin" && app.contains(box)) box.replaceChildren(...adminView(data));
+      if (state.screen === "admin" && app.contains(box)) box.replaceChildren(...adminView(data), broadcastSection());
     }).catch((e) => {
       if (state.screen === "admin" && app.contains(box)) box.replaceChildren(h("p", { class: "message" }, errorText(e)));
     });
@@ -2285,7 +2819,8 @@
     const row = (label, value) => h("li", { class: "row plain" },
       h("div", { class: "row-main" }, label), h("div", { class: "row-side num" }, value));
 
-    const actions = ["open", "search", "inventory", "import", "add", "edit", "remove", "sell", "watch", "alert", "digest", "bot"]
+    const actions = ["open", "search", "inventory", "import", "add", "edit", "remove", "sell", "watch", "alert", "digest",
+      "export", "share", "bot"]
       .filter((k) => d.actions_7d[k]);
     const p = d.prices;
 
@@ -2491,6 +3026,7 @@
       h("div", { class: "form" }, qtyField, buyField),
       note,
       summary,
+      editing && held && folderField(held, () => showItem(heldItem(item.hash_name) || item, "edit", backTo, { quiet: true })),
       marketDepth,
       alerts && alerts.list,
       secondary.inline,
@@ -2537,7 +3073,8 @@
 
     function save(q, b) {
       if (state.busy) return;
-      submit({ path: "/api/holdings", json: { hash_name: item.hash_name, qty: q, buy_price: b, mode: editing ? "set" : "add" } });
+      submit({ path: "/api/holdings", json: { hash_name: item.hash_name, qty: q, buy_price: b, mode: editing ? "set" : "add",
+        folder: editing ? undefined : state.folder } });
     }
 
     async function remove() {

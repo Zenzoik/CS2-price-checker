@@ -15,6 +15,7 @@ from aiohttp import web
 
 from ..steam import SteamMarket
 from .backup import BackupError, backup_database
+from .broadcast import Broadcaster
 from .db import SCHEMA_VERSION, Store, StoreError, stored_schema
 from .monitor import AdminAlerts, HealthMonitor
 from .notify import Notifier
@@ -58,28 +59,31 @@ async def serve() -> None:
     # Inventories get their own client: separate throttle, lock and Steam limits.
     inventories = InventoryService(SteamMarket(request_delay=settings.request_delay, max_retries=0,
                                                server_retries=0, timeout=15.0))
-    app = create_app(settings, store, prices, inventories)
-    runner = web.AppRunner(app, access_log=None)
-    await runner.setup()
     # Left behind only if the process died without cleaning up: a crash. Written
     # only once we own the port, with our PID, so a second instance that fails to
     # start can neither raise a false alarm nor delete the running one's marker.
     marker = settings.db_path.with_name(settings.db_path.name + ".running")
     own_marker = False
+    runner = None
     try:
-        await web.TCPSite(runner, settings.host, settings.port).start()
-        crashed_before = marker.exists()
-        marker.write_text(str(os.getpid()))
-        own_marker = True
-        log.info("Mini App on http://%s:%d (public: %s)", settings.host, settings.port, settings.public_url)
         async with aiohttp.ClientSession() as session:
+            # The web app sends files and pictures through the bot, so it comes first.
             bot = TelegramBot(settings, session, store)
+            app = create_app(settings, store, prices, inventories, bot=bot)
+            runner = web.AppRunner(app, access_log=None)
+            await runner.setup()
+            await web.TCPSite(runner, settings.host, settings.port).start()
+            crashed_before = marker.exists()
+            marker.write_text(str(os.getpid()))
+            own_marker = True
+            log.info("Mini App on http://%s:%d (public: %s)", settings.host, settings.port, settings.public_url)
             alerts = AdminAlerts(bot.notify_admins)
             monitor = HealthMonitor(prices, alerts, db_path=settings.db_path,
                                     backup_dir=settings.backups, backup_keep=settings.backup_keep)
             notifier = Notifier(store, bot.message_user, currency=settings.currency)
             # Shares the inventory budget with users' lookups, so it can't starve them.
             syncer = InventorySync(store, inventories, app[INVENTORY_LIMITER], bot.message_user)
+            broadcaster = Broadcaster(store, bot.message_user, allows=settings.allows)
             if crashed_before:
                 await alerts.event("restarted")
             await asyncio.gather(
@@ -88,9 +92,11 @@ async def serve() -> None:
                 supervise("Health monitor", monitor.run, alerts),
                 supervise("Notifications", lambda: notifier.run(prices.passed), alerts),
                 supervise("Inventory sync", syncer.run, alerts),
+                supervise("Broadcasts", broadcaster.run, alerts),
             )
     finally:
-        await runner.cleanup()
+        if runner is not None:
+            await runner.cleanup()
         store.close()
         if own_marker and _read(marker) == str(os.getpid()):
             marker.unlink(missing_ok=True)

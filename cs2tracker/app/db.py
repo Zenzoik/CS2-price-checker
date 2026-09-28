@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS holdings (
     added_at      REAL NOT NULL,
     -- 1: take the first market price we get as the price paid (imports)
     buy_at_market INTEGER NOT NULL DEFAULT 0,
+    folder_id     INTEGER,  -- NULL: in no folder
     PRIMARY KEY (user_id, hash_name)
 );
 """
@@ -116,6 +117,26 @@ CREATE TABLE IF NOT EXISTS inventory_sync (
     next_at      REAL NOT NULL,
     error        TEXT                        -- private | not_found; NULL when the last read worked
 );
+-- A user's own grouping of positions ("Main", "Alt", "Long-term"); one folder per position.
+CREATE TABLE IF NOT EXISTS folders (
+    id      INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    name    TEXT NOT NULL,
+    UNIQUE (user_id, name)
+);
+-- An admin's message to everyone the bot may write to; `cursor` makes it resumable.
+CREATE TABLE IF NOT EXISTS broadcasts (
+    id          INTEGER PRIMARY KEY,
+    admin_id    INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    created_at  REAL NOT NULL,
+    total       INTEGER NOT NULL,
+    cursor      INTEGER NOT NULL DEFAULT 0,  -- the last user id handled
+    sent        INTEGER NOT NULL DEFAULT 0,
+    failed      INTEGER NOT NULL DEFAULT 0,
+    finished_at REAL,
+    cancelled   INTEGER NOT NULL DEFAULT 0
+);
 """.format(holdings=HOLDINGS_DDL)
 
 PRICE_HISTORY_DDL = """
@@ -139,7 +160,7 @@ CREATE TABLE IF NOT EXISTS holding_history (
 """
 HOLDING_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS holding_history_user_day ON holding_history (user_id, day)"
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # A CS2 seller gets the buyer's price minus 5% Steam + 10% game fee.
 STEAM_FEE_PERCENT = 15
@@ -159,6 +180,8 @@ PORTFOLIO_METRICS = ("value_pct", "value_amount")
 DIGESTS = ("off", "daily", "weekly")
 # An inventory is re-read at most this often per user.
 SYNC_EVERY = 86400
+MAX_FOLDERS = 10
+MAX_FOLDER_NAME = 32
 
 
 class StoreError(Exception):
@@ -185,6 +208,7 @@ class Holding:
     sell_order_cents: int | None = None
     buy_orders: int | None = None
     sell_listings: int | None = None
+    folder_id: int | None = None
 
 
 def stored_schema(path: Path | str) -> int | None:
@@ -284,6 +308,12 @@ class Store:
             # sales and inventory_sync come from SCHEMA.
             with self.conn:
                 self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', '8')")
+        if version < 9:
+            # folders and broadcasts come from SCHEMA; positions get a folder.
+            with self.conn:
+                if "folder_id" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(holdings)")}:
+                    self.conn.execute("ALTER TABLE holdings ADD COLUMN folder_id INTEGER")
+                self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', '9')")
 
     def _reconcile_holding_history(self) -> None:
         """Records quantities changed without this code (an older release, manual SQL).
@@ -446,7 +476,7 @@ class Store:
             """SELECT h.hash_name, COALESCE(i.name, h.hash_name) AS name, i.icon, h.qty, h.buy_cents,
                       p.cents AS price_cents, p.updated_at AS price_updated, p.checked_at AS price_checked,
                       ph.cents AS yesterday_cents, ph7.cents AS week_ago_cents,
-                      p.buy_order_cents, p.sell_order_cents, p.buy_orders, p.sell_listings
+                      p.buy_order_cents, p.sell_order_cents, p.buy_orders, p.sell_listings, h.folder_id
                FROM holdings h
                LEFT JOIN items i ON i.hash_name = h.hash_name
                LEFT JOIN prices p ON p.hash_name = h.hash_name
@@ -464,42 +494,47 @@ class Store:
     def count(self, user_id: int) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM holdings WHERE user_id = ?", (user_id,)).fetchone()[0]
 
-    def add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None) -> None:
+    def add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None,
+                folder_id: int | None = None) -> None:
         """Adds a purchase; an existing position gets the weighted average price.
 
         If either side's price is unknown the average is unknown too (NULL).
+        `folder_id` places a new position; an existing one stays where it is.
         """
         with self.conn:
-            self._add_lot(user_id, hash_name, qty, buy_cents)
+            self._add_lot(user_id, hash_name, qty, buy_cents, self._own_folder(user_id, folder_id))
 
-    def _add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None) -> None:
+    def _add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None,
+                 folder_id: int | None = None) -> None:
         """add_lot inside the caller's transaction."""
         old = self._qty(user_id, hash_name)
         cur = self.conn.execute(
-            """INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at) VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at, folder_id) VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id, hash_name) DO UPDATE SET
                  buy_cents = (qty * buy_cents + excluded.qty * excluded.buy_cents
                               + (qty + excluded.qty) / 2) / (qty + excluded.qty),
                  qty = qty + excluded.qty,
                  buy_at_market = 0
                WHERE qty + excluded.qty <= ?""",
-            (user_id, hash_name, qty, buy_cents, time.time(), MAX_QTY),
+            (user_id, hash_name, qty, buy_cents, time.time(), folder_id, MAX_QTY),
         )
         if cur.rowcount == 0:
             raise QuantityLimit(f"at most {MAX_QTY} of one item")
         self._quantity_changed(user_id, hash_name, old, self._qty(user_id, hash_name))
 
-    def import_items(self, user_id: int, rows: list[tuple[str, int, int | None, bool]]) -> int:
+    def import_items(self, user_id: int, rows: list[tuple[str, int, int | None, bool]],
+                     folder_id: int | None = None) -> int:
         """(hash name, qty, buy cents or None, take first market price); held items are skipped."""
         now = time.time()
         added = 0
         with self.conn:
+            folder_id = self._own_folder(user_id, folder_id)
             for name, qty, buy, at_market in rows:
                 qty = min(qty, MAX_QTY)
                 cur = self.conn.execute(
-                    "INSERT OR IGNORE INTO holdings (user_id, hash_name, qty, buy_cents, added_at, buy_at_market) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (user_id, name, qty, buy, now, int(at_market and buy is None)),
+                    "INSERT OR IGNORE INTO holdings (user_id, hash_name, qty, buy_cents, added_at, buy_at_market, "
+                    "folder_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (user_id, name, qty, buy, now, int(at_market and buy is None), folder_id),
                 )
                 if cur.rowcount:
                     added += 1
@@ -538,6 +573,107 @@ class Store:
             "SELECT qty FROM holdings WHERE user_id = ? AND hash_name = ?", (user_id, hash_name)
         ).fetchone()
         return row[0] if row else 0
+
+    # -- folders -------------------------------------------------------------
+
+    def folders(self, user_id: int) -> list[dict]:
+        """In creation order, with how many positions each holds."""
+        rows = self.conn.execute(
+            """SELECT f.id, f.name, COUNT(h.hash_name) AS count FROM folders f
+               LEFT JOIN holdings h ON h.user_id = f.user_id AND h.folder_id = f.id
+               WHERE f.user_id = ? GROUP BY f.id ORDER BY f.id""",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def _own_folder(self, user_id: int, folder_id: int | None) -> int | None:
+        """`folder_id` if it is this user's, else None (no folder)."""
+        if folder_id is None:
+            return None
+        row = self.conn.execute("SELECT 1 FROM folders WHERE id = ? AND user_id = ?", (folder_id, user_id)).fetchone()
+        return folder_id if row else None
+
+    def save_folder(self, user_id: int, name: str, folder_id: int | None = None) -> int | None:
+        """Creates or renames a folder; None when full, taken or not this user's."""
+        with self.conn:
+            taken = self.conn.execute(
+                "SELECT id FROM folders WHERE user_id = ? AND name = ?", (user_id, name)).fetchone()
+            if taken is not None:
+                return folder_id if taken[0] == folder_id else None
+            if folder_id is not None:
+                cur = self.conn.execute("UPDATE folders SET name = ? WHERE id = ? AND user_id = ?",
+                                        (name, folder_id, user_id))
+                return folder_id if cur.rowcount else None
+            count = self.conn.execute("SELECT COUNT(*) FROM folders WHERE user_id = ?", (user_id,)).fetchone()[0]
+            if count >= MAX_FOLDERS:
+                return None
+            return self.conn.execute("INSERT INTO folders (user_id, name) VALUES (?, ?)", (user_id, name)).lastrowid
+
+    def delete_folder(self, user_id: int, folder_id: int) -> bool:
+        """Its positions stay, in no folder."""
+        with self.conn:
+            if not self.conn.execute("DELETE FROM folders WHERE id = ? AND user_id = ?",
+                                     (folder_id, user_id)).rowcount:
+                return False
+            self.conn.execute("UPDATE holdings SET folder_id = NULL WHERE user_id = ? AND folder_id = ?",
+                              (user_id, folder_id))
+        return True
+
+    def move_holdings(self, user_id: int, hash_names: list[str], folder_id: int | None) -> int | None:
+        """Puts positions into a folder (None: out of any); None when the folder isn't this user's."""
+        with self.conn:
+            if folder_id is not None and self._own_folder(user_id, folder_id) is None:
+                return None
+            return sum(self.conn.execute(
+                "UPDATE holdings SET folder_id = ? WHERE user_id = ? AND hash_name = ?",
+                (folder_id, user_id, name)).rowcount for name in hash_names)
+
+    # -- broadcasts ------------------------------------------------------------
+
+    def broadcast_audience(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM prefs WHERE write_access = 1").fetchone()[0]
+
+    def start_broadcast(self, admin_id: int, text: str, at: float | None = None) -> int | None:
+        """None while another one is still going out."""
+        with self.conn:
+            if self.running_broadcast() is not None:
+                return None
+            return self.conn.execute(
+                "INSERT INTO broadcasts (admin_id, text, created_at, total) VALUES (?, ?, ?, ?)",
+                (admin_id, text, time.time() if at is None else at, self.broadcast_audience()),
+            ).lastrowid
+
+    def running_broadcast(self) -> dict | None:
+        row = self.conn.execute("SELECT * FROM broadcasts WHERE finished_at IS NULL ORDER BY id LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+    def last_broadcast(self) -> dict | None:
+        row = self.conn.execute("SELECT * FROM broadcasts ORDER BY id DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+    def broadcast_recipients(self, broadcast_id: int, limit: int = 50) -> list[int]:
+        """The next users, in id order after the cursor, the bot may write to."""
+        cursor = self.conn.execute("SELECT cursor FROM broadcasts WHERE id = ?", (broadcast_id,)).fetchone()[0]
+        rows = self.conn.execute(
+            "SELECT user_id FROM prefs WHERE write_access = 1 AND user_id > ? ORDER BY user_id LIMIT ?",
+            (cursor, limit),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def broadcast_progress(self, broadcast_id: int, user_id: int, delivered: bool | None) -> None:
+        """`delivered` None: skipped (e.g. not allowed to use a private bot)."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE broadcasts SET cursor = ?, sent = sent + ?, failed = failed + ? WHERE id = ?",
+                (user_id, int(delivered is True), int(delivered is False), broadcast_id),
+            )
+
+    def finish_broadcast(self, broadcast_id: int, cancelled: bool = False, at: float | None = None) -> bool:
+        with self.conn:
+            return self.conn.execute(
+                "UPDATE broadcasts SET finished_at = ?, cancelled = ? WHERE id = ? AND finished_at IS NULL",
+                (time.time() if at is None else at, int(cancelled), broadcast_id),
+            ).rowcount > 0
 
     # -- sales ---------------------------------------------------------------
 
@@ -738,7 +874,8 @@ class Store:
         self.conn.execute("UPDATE inventory_sync SET pending_gone = ? WHERE user_id = ?",
                           (json.dumps(gone, ensure_ascii=False), user_id))
 
-    def portfolio_history(self, user_id: int, days: int = 30, now: float | None = None) -> dict:
+    def portfolio_history(self, user_id: int, days: int = 30, now: float | None = None,
+                          folder_id: int | None = None) -> dict:
         """Daily net value of a portfolio, and how much of its change the market made.
 
         A day's value is each recorded quantity times the item's last observed
@@ -752,12 +889,19 @@ class Store:
         a "7 days" change is measured from; 0 returns everything. The market
         change leaves out quantity changes and items that gained or lost a
         price, so adding an item never shows up as a gain.
+
+        `folder_id` limits it to the items in that folder now: the history of
+        what the folder holds, as folders themselves have none.
         """
         today = date.fromisoformat(self._utc_day(now))
         changes = self.conn.execute(
             "SELECT hash_name, day, qty, changed FROM holding_history WHERE user_id = ? AND day <= ? ORDER BY day",
             (user_id, today.isoformat()),
         ).fetchall()
+        if folder_id is not None:
+            members = {r[0] for r in self.conn.execute(
+                "SELECT hash_name FROM holdings WHERE user_id = ? AND folder_id = ?", (user_id, folder_id))}
+            changes = [row for row in changes if row["hash_name"] in members]
         if not changes:
             return {"points": [], "change": None, "change_ratio": None}
         start = date.fromisoformat(changes[0]["day"])

@@ -6,6 +6,7 @@ Long polling via the plain Bot API, so no public webhook endpoint is needed.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 
@@ -24,6 +25,7 @@ TEXTS = {
                    "Add what you bought and what you paid — the app tracks Steam prices "
                    "and shows your profit.",
         "open": "Open portfolio",
+        "track": "Track your CS2 items",
         "menu": "Portfolio",
         "private": "Sorry, this bot is private.",
     },
@@ -32,6 +34,7 @@ TEXTS = {
                    "Добавьте, что купили и за сколько, — приложение следит за ценами Steam "
                    "и показывает прибыль.",
         "open": "Открыть портфель",
+        "track": "Следить за своими предметами CS2",
         "menu": "Портфель",
         "private": "Извините, это приватный бот.",
     },
@@ -40,6 +43,7 @@ TEXTS = {
                    "Додайте, що купили і за скільки, — застосунок стежить за цінами Steam "
                    "і показує прибуток.",
         "open": "Відкрити портфель",
+        "track": "Стежити за своїми предметами CS2",
         "menu": "Портфель",
         "private": "Вибачте, це приватний бот.",
     },
@@ -94,6 +98,7 @@ class TelegramBot:
         self.settings = settings
         self.session = session
         self.store = store  # usage statistics; optional
+        self.username: str | None = None  # from getMe, for t.me links
 
     async def call(self, method: str, **params):
         """Bot API call; every failure comes out as BotApiError with the token redacted."""
@@ -109,6 +114,52 @@ class TelegramBot:
             description = data.get("description") if isinstance(data, dict) else None
             raise BotApiError(f"{method}: {description or f'HTTP {status}'}")
         return data.get("result")
+
+    async def upload(self, method: str, field: str, filename: str, data: bytes, content_type: str, **params):
+        """A Bot API call that sends a file (multipart); errors as in `call`."""
+        url = API.format(token=self.settings.bot_token, method=method)
+        form = aiohttp.FormData()
+        for key, value in params.items():
+            form.add_field(key, value if isinstance(value, str) else json.dumps(value, ensure_ascii=False))
+        form.add_field(field, data, filename=filename, content_type=content_type)
+        try:
+            async with self.session.post(url, data=form, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                status = resp.status
+                result = await resp.json(content_type=None)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as e:
+            raise BotApiError(f"{method}: {self._redact(f'{type(e).__name__}: {e}')}") from None
+        if not isinstance(result, dict) or not result.get("ok"):
+            description = result.get("description") if isinstance(result, dict) else None
+            raise BotApiError(f"{method}: {description or f'HTTP {status}'}")
+        return result.get("result")
+
+    def _open_button(self, user_id: int) -> dict:
+        lang = self.store.user_language(user_id) if self.store is not None else None
+        return {"inline_keyboard": [[{"text": texts(lang)["open"], "web_app": {"url": self.settings.public_url}}]]}
+
+    async def send_document(self, user_id: int, filename: str, data: bytes, caption: str = "") -> None:
+        """Raises BotApiError, e.g. when the user blocked the bot."""
+        await self.upload("sendDocument", "document", filename, data, "text/csv",
+                          chat_id=str(user_id), caption=caption[:1000])
+
+    async def send_photo(self, user_id: int, data: bytes, caption: str = "") -> None:
+        """A picture the user can forward; raises BotApiError."""
+        await self.upload("sendPhoto", "photo", "portfolio.jpg", data, "image/jpeg",
+                          chat_id=str(user_id), caption=caption[:1000], reply_markup=self._share_markup(user_id))
+
+    def _share_markup(self, user_id: int) -> dict:
+        # Forwarded or shared messages can't carry a web_app button: link to the bot.
+        lang = self.store.user_language(user_id) if self.store is not None else None
+        url = f"https://t.me/{self.username}" if self.username else self.settings.public_url
+        return {"inline_keyboard": [[{"text": texts(lang)["track"], "url": url}]]}
+
+    async def prepare_share(self, user_id: int, photo_url: str, caption: str = "") -> str:
+        """A prepared message for Telegram.WebApp.shareMessage; raises BotApiError."""
+        result = await self.call("savePreparedInlineMessage", user_id=user_id, result={
+            "type": "photo", "id": photo_url.rsplit("/", 1)[-1][:64], "photo_url": photo_url,
+            "thumbnail_url": photo_url, "caption": caption[:1000], "reply_markup": self._share_markup(user_id),
+        }, allow_user_chats=True, allow_group_chats=True, allow_channel_chats=True)
+        return result["id"]
 
     def _redact(self, text: str) -> str:
         return text.replace(self.settings.bot_token, "<token>")
@@ -130,10 +181,7 @@ class TelegramBot:
 
     async def message_user(self, user_id: int, text: str) -> bool:
         """A message from the bot with an "Open portfolio" button; False if Telegram refused it."""
-        lang = self.store.user_language(user_id) if self.store is not None else None
-        params = {"chat_id": user_id, "text": text[:4000], "reply_markup": {
-            "inline_keyboard": [[{"text": texts(lang)["open"], "web_app": {"url": self.settings.public_url}}]],
-        }}
+        params = {"chat_id": user_id, "text": text[:4000], "reply_markup": self._open_button(user_id)}
         try:
             try:
                 await self.call("sendMessage", **params)
@@ -153,6 +201,8 @@ class TelegramBot:
         return True
 
     async def setup(self) -> None:
+        me = await self.call("getMe")
+        self.username = me.get("username") if isinstance(me, dict) else None
         # getUpdates does not work while a webhook is set.
         await self.call("deleteWebhook")
         await self.call("setChatMenuButton", menu_button={
