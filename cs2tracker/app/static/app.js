@@ -45,6 +45,9 @@
       becomes: "Will become {qty} at {price} each.",
       removeFull: "Remove from portfolio",
       pricing: "Fetching prices: {n} of {total}",
+      sortBy: "Sort by", sortAsc: "Ascending", sortDesc: "Descending",
+      sort_value: "Value", sort_profitPct: "Profit, %", sort_profit: "Profit", sort_qty: "Quantity",
+      sort_price: "Price each", sort_name: "Name", sort_added: "Recently added",
       removeConfirm: "Remove {name} from the portfolio?",
       justNow: "just now", updated: "updated {ago}", unpriced: "{n} without a price",
       kind_sell: "Lowest Steam listing", kind_buy: "Highest Steam buy order",
@@ -91,6 +94,9 @@
       becomes: "Станет {qty} шт. по {price}.",
       removeFull: "Убрать из портфеля",
       pricing: "Получаем цены: {n} из {total}",
+      sortBy: "Сортировка", sortAsc: "По возрастанию", sortDesc: "По убыванию",
+      sort_value: "Стоимость", sort_profitPct: "Прибыль, %", sort_profit: "Прибыль, ₴", sort_qty: "Количество",
+      sort_price: "Цена за шт.", sort_name: "Название", sort_added: "Недавно добавленные",
       removeConfirm: "Убрать {name} из портфеля?",
       justNow: "только что", updated: "обновлено {ago}", unpriced: "без цены: {n}",
       kind_sell: "Мин. цена продажи Steam", kind_buy: "Макс. заявка на покупку Steam",
@@ -137,6 +143,9 @@
       becomes: "Стане {qty} шт. по {price}.",
       removeFull: "Прибрати з портфеля",
       pricing: "Отримуємо ціни: {n} з {total}",
+      sortBy: "Сортування", sortAsc: "За зростанням", sortDesc: "За спаданням",
+      sort_value: "Вартість", sort_profitPct: "Прибуток, %", sort_profit: "Прибуток, ₴", sort_qty: "Кількість",
+      sort_price: "Ціна за шт.", sort_name: "Назва", sort_added: "Нещодавно додані",
       removeConfirm: "Прибрати {name} з портфеля?",
       justNow: "щойно", updated: "оновлено {ago}", unpriced: "без ціни: {n}",
       kind_sell: "Мін. ціна продажу Steam", kind_buy: "Макс. заявка на купівлю Steam",
@@ -517,8 +526,7 @@
     const pending = p.items.filter((i) => i.pending).length;
     if (pending) followPendingPrices();
     const pnl = trackedValue - pricedCost;
-    const worth = (it) => (it.price == null ? -1 : net(it.price) * it.qty);
-    const items = [...p.items].sort((a, b) => worth(b) - worth(a));
+    const items = sortItems(p.items);
 
     const foot = [`${t(`kind_${p.price_kind}`)}, ${t("afterFee")}`];
     if (p.updated_at) foot.push(t("updated", { ago: ago(p.updated_at) }));
@@ -539,10 +547,72 @@
           h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
           progressBar((p.items.length - pending) / p.items.length)),
       ),
+      p.items.length > 1 && sortControl(),
       h("ul", { class: "list" }, items.map(homeRow)),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
     ], { keepScroll });
+  }
+
+  // -- sorting -------------------------------------------------------------------
+
+  // key -> [value of an item (null = unknown, always listed last), default direction]
+  const SORTS = {
+    value: [(it) => (it.price == null ? null : net(it.price) * it.qty), "desc"],
+    profitPct: [(it) => (it.price == null || !(it.buy_price > 0) ? null : net(it.price) / it.buy_price - 1), "desc"],
+    profit: [(it) => (it.price == null || it.buy_price == null ? null : (net(it.price) - it.buy_price) * it.qty), "desc"],
+    qty: [(it) => it.qty, "desc"],
+    price: [(it) => it.price, "desc"],
+    name: [(it) => it.name.toLocaleLowerCase(locale), "asc"],
+    added: [(it, i) => i, "desc"], // the server lists items oldest first
+  };
+
+  const sort = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("sort") || "null");
+      if (saved && SORTS[saved.key] && (saved.dir === "asc" || saved.dir === "desc")) return saved;
+    } catch (e) { /* storage unavailable: use the default */ }
+    return { key: "value", dir: "desc" };
+  })();
+
+  function saveSort() {
+    try { localStorage.setItem("sort", JSON.stringify(sort)); } catch (e) { /* per-device nicety only */ }
+  }
+
+  function sortItems(items) {
+    const [get] = SORTS[sort.key];
+    const sign = sort.dir === "asc" ? 1 : -1;
+    return items
+      .map((it, i) => ({ it, v: get(it, i), i }))
+      .sort((a, b) => {
+        if (a.v == null || b.v == null) return (a.v == null) - (b.v == null) || a.i - b.i;
+        const c = typeof a.v === "string" ? a.v.localeCompare(b.v, locale) : a.v - b.v;
+        return c * sign || a.i - b.i;
+      })
+      .map((x) => x.it);
+  }
+
+  // "Value ↓": the name opens the platform's own picker, the arrow flips direction.
+  function sortControl() {
+    const select = h("select", { class: "sort-select", "aria-label": t("sortBy") },
+      Object.keys(SORTS).map((key) => h("option", { value: key, selected: key === sort.key }, t(`sort_${key}`))));
+    select.addEventListener("change", () => {
+      sort.key = select.value;
+      sort.dir = SORTS[sort.key][1];
+      saveSort();
+      haptic.tap();
+      showHome({ keepScroll: true });
+    });
+    const arrow = h("button", {
+      type: "button", class: "sort-dir", "aria-label": t(sort.dir === "asc" ? "sortAsc" : "sortDesc"),
+      onclick: () => {
+        sort.dir = sort.dir === "asc" ? "desc" : "asc";
+        saveSort();
+        haptic.tap();
+        showHome({ keepScroll: true });
+      },
+    }, sort.dir === "asc" ? "↑" : "↓");
+    return h("div", { class: "sort" }, select, arrow);
   }
 
   function progressBar(ratio) {
