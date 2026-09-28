@@ -794,3 +794,24 @@ def test_buy_order_prices_use_the_order_book_only(tmp_path):
     store.add_lot(1, "A", 1, 100)
     asyncio.run(prices.refresh())
     assert overview.calls == [] and store.price("A")[0] == 100
+
+
+def test_rate_limited_source_sits_out_a_while(tmp_path):
+    now = [1000.0]
+    books = {f"I{i}": (1, 2) for i in range(4)}
+    main = OverviewMarket(0.01, books=books)
+    overview = OverviewMarket(0.01, books={n: RateLimited("429") for n in books})
+    store = Store(tmp_path / "t.db", "UAH")
+    prices = PriceService(store, main, currency="UAH", kind="sell", refresh_minutes=10,
+                          overview_market=overview, clock=lambda: now[0])
+    for name in books:
+        store.add_lot(1, name, 1, 100)
+    assert asyncio.run(prices.refresh()) == 4
+    tried = len(overview.calls)
+    assert tried == 1  # one 429, then it stepped aside
+    now[0] += 700  # due again, but still inside the cooldown
+    asyncio.run(prices.refresh())
+    assert len(overview.calls) == tried
+    now[0] += 600  # cooldown over and prices due again
+    asyncio.run(prices.refresh())
+    assert len(overview.calls) > tried

@@ -27,6 +27,9 @@ log = logging.getLogger(__name__)
 SEARCH_TTL = 600
 SEARCH_CACHE_SIZE = 500
 MAX_CONSECUTIVE_ERRORS = 3
+# A source Steam rate-limited sits out this long (some hosting IPs are limited
+# on priceoverview for hours; no point asking every pass).
+SOURCE_COOLDOWN = 900
 # How long a user request may wait for Steam before giving up.
 INTERACTIVE_WAIT = 10.0
 
@@ -91,6 +94,7 @@ class PriceService:
         # priceoverview only knows the lowest listing, so it can only help "sell".
         self._overview = overview_market if kind == "sell" else None
         self._overview_gate = SteamGate()
+        self._paused_until: dict[str, float] = {}
         self.max_age = refresh_minutes * 60
         self.interactive_wait = interactive_wait
         self._clock = clock
@@ -176,9 +180,11 @@ class PriceService:
             return 0
         self.fetcher.start_pass()
         queue = deque(due)
-        workers = [self._work(queue, "order book", self._gate, self.fetcher.fetch)]
+        sources = [("order book", self._gate, self.fetcher.fetch)]
         if self._overview is not None:
-            workers.append(self._work(queue, "priceoverview", self._overview_gate, self._overview_fetch))
+            sources.append(("priceoverview", self._overview_gate, self._overview_fetch))
+        now = self._clock()
+        workers = [self._work(queue, *src) for src in sources if self._paused_until.get(src[0], 0) <= now]
         done = sum(await asyncio.gather(*workers))
         log.info("Refreshed %d/%d price(s)", done, len(due))
         return done
@@ -200,6 +206,8 @@ class PriceService:
                 continue
             except (RateLimited, CurrencyMismatch) as e:
                 queue.appendleft(name)  # the other worker may still get it
+                if isinstance(e, RateLimited):
+                    self._paused_until[source] = self._clock() + SOURCE_COOLDOWN
                 log.error("Price refresh via %s stopped: %s", source, e)
                 break
             except SteamError as e:
