@@ -350,7 +350,8 @@ def test_api_watch_and_prefs(tmp_path):
         assert (await post("/api/watch", {"hash_name": CASE, "on": "yes"})).status == 400
 
         r = await post("/api/prefs", {"digest": "daily", "digest_hour": 9, "tz": "Europe/Kyiv"})
-        assert await r.json() == {"digest": "daily", "digest_hour": 9, "tz": "Europe/Kyiv", "can_notify": False}
+        assert await r.json() == {"digest": "daily", "digest_hour": 9, "tz": "Europe/Kyiv", "can_notify": False,
+                                  "sync": None}
         assert store.prefs(42)["digest_offered"] == 1
         for bad in ({"digest": "hourly"}, {"digest_hour": 24}, {"digest_hour": True},
                     {"tz": "Mars/Olympus"}, {"write_access": 1}):

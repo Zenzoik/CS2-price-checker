@@ -19,8 +19,9 @@ from .db import SCHEMA_VERSION, Store, StoreError, stored_schema
 from .monitor import AdminAlerts, HealthMonitor
 from .notify import Notifier
 from .prices import InventoryService, PriceService
-from .server import create_app
+from .server import INVENTORY_LIMITER, create_app
 from .settings import SettingsError, load_app_settings
+from .sync import InventorySync
 from .telegram import TelegramBot
 
 log = logging.getLogger("cs2tracker")
@@ -57,7 +58,8 @@ async def serve() -> None:
     # Inventories get their own client: separate throttle, lock and Steam limits.
     inventories = InventoryService(SteamMarket(request_delay=settings.request_delay, max_retries=0,
                                                server_retries=0, timeout=15.0))
-    runner = web.AppRunner(create_app(settings, store, prices, inventories), access_log=None)
+    app = create_app(settings, store, prices, inventories)
+    runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     # Left behind only if the process died without cleaning up: a crash. Written
     # only once we own the port, with our PID, so a second instance that fails to
@@ -76,6 +78,8 @@ async def serve() -> None:
             monitor = HealthMonitor(prices, alerts, db_path=settings.db_path,
                                     backup_dir=settings.backups, backup_keep=settings.backup_keep)
             notifier = Notifier(store, bot.message_user, currency=settings.currency)
+            # Shares the inventory budget with users' lookups, so it can't starve them.
+            syncer = InventorySync(store, inventories, app[INVENTORY_LIMITER], bot.message_user)
             if crashed_before:
                 await alerts.event("restarted")
             await asyncio.gather(
@@ -83,6 +87,7 @@ async def serve() -> None:
                 supervise("Telegram bot", bot.run, alerts),
                 supervise("Health monitor", monitor.run, alerts),
                 supervise("Notifications", lambda: notifier.run(prices.passed), alerts),
+                supervise("Inventory sync", syncer.run, alerts),
             )
     finally:
         await runner.cleanup()

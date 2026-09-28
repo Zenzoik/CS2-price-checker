@@ -126,6 +126,22 @@
       err_alerts_full: "You already have 20 alerts. Delete one to add another.",
       err_watch_full: "Your watchlist is full (50 items).",
       err_no_buy_price: "Enter the price you paid to get profit alerts.",
+      sold: "Sold…", sellTitle: "Record a sale", sellQty: "Quantity sold", sellPrice: "Received, each",
+      sellHint: "What one item brought you, after fees. Filled in with today's price after Steam's fee.",
+      sellLeft: "{qty} will stay in the portfolio.", sellCloses: "This closes the position.",
+      recordSale: "Record sale", received: "Received", realizedLabel: "Realized", soldFor: "Sold for {v}",
+      realizedProfit: "Realized profit", sales: "Sales", saleSub: "{qty} × {price} · {date}",
+      noSales: "No sales yet. Record one from an item's screen.",
+      undoConfirm: "Undo this sale? {qty} × {name} go back to the portfolio at the price paid.",
+      undoHint: "Tap a sale to undo it.",
+      syncNew: "New in your Steam inventory: {n}", syncReview: "Review", syncGone: "Gone from your Steam inventory. Sold?",
+      syncDismiss: "Dismiss", syncTitle: "Inventory check", sync_on: "On", sync_off: "Off",
+      syncHint: "Once a day the bot looks at the Steam inventory you imported from and tells you about new items and ones that are gone. Nothing is added or removed by itself.",
+      syncChecked: "Checked {ago}.", syncPrivate: "This inventory is private, so it can't be checked.",
+      syncNotFound: "This Steam profile wasn't found.",
+      syncNone: "Import your inventory once (paste your Steam profile link in search) to have it checked daily.",
+      err_sell_qty: "You don't have that many.", err_no_sync: "Import your inventory first.",
+      act_sell: "Sales recorded",
     },
     ru: {
       addItem: "Добавить предмет", add: "Добавить", save: "Сохранить", boughtMore: "Докупить", remove: "Убрать",
@@ -240,6 +256,22 @@
       err_alerts_full: "У вас уже 20 уведомлений. Удалите одно, чтобы добавить новое.",
       err_watch_full: "Список наблюдения заполнен (50 предметов).",
       err_no_buy_price: "Укажите цену покупки, чтобы получать уведомления о прибыли.",
+      sold: "Продано…", sellTitle: "Отметить продажу", sellQty: "Продано, шт.", sellPrice: "Получено за шт.",
+      sellHint: "Сколько принёс один предмет после комиссий. Подставлена сегодняшняя цена за вычетом комиссии Steam.",
+      sellLeft: "В портфеле останется {qty} шт.", sellCloses: "Позиция будет закрыта.",
+      recordSale: "Отметить продажу", received: "Получено", realizedLabel: "Реализовано", soldFor: "Продано на {v}",
+      realizedProfit: "Реализованная прибыль", sales: "Продажи", saleSub: "{qty} шт. × {price} · {date}",
+      noSales: "Продаж пока нет. Отметить продажу можно в карточке предмета.",
+      undoConfirm: "Отменить продажу? {name}, {qty} шт., вернутся в портфель по цене покупки.",
+      undoHint: "Нажмите на продажу, чтобы отменить её.",
+      syncNew: "Новое в инвентаре Steam: {n}", syncReview: "Посмотреть", syncGone: "Пропало из инвентаря Steam. Продали?",
+      syncDismiss: "Скрыть", syncTitle: "Проверка инвентаря", sync_on: "Вкл.", sync_off: "Выкл.",
+      syncHint: "Раз в день бот смотрит инвентарь Steam, из которого вы импортировали предметы, и сообщает о новых и пропавших. Сам ничего не добавляет и не удаляет.",
+      syncChecked: "Проверено {ago}.", syncPrivate: "Инвентарь скрыт, проверить его нельзя.",
+      syncNotFound: "Профиль Steam не найден.",
+      syncNone: "Импортируйте инвентарь один раз (вставьте ссылку на профиль Steam в поиск), и он будет проверяться каждый день.",
+      err_sell_qty: "У вас нет столько.", err_no_sync: "Сначала импортируйте инвентарь.",
+      act_sell: "Отмечено продаж",
     },
     uk: {
       addItem: "Додати предмет", add: "Додати", save: "Зберегти", boughtMore: "Докупити", remove: "Прибрати",
@@ -354,6 +386,22 @@
       err_alerts_full: "У вас уже 20 сповіщень. Видаліть одне, щоб додати нове.",
       err_watch_full: "Список спостереження заповнений (50 предметів).",
       err_no_buy_price: "Вкажіть ціну купівлі, щоб отримувати сповіщення про прибуток.",
+      sold: "Продано…", sellTitle: "Позначити продаж", sellQty: "Продано, шт.", sellPrice: "Отримано за шт.",
+      sellHint: "Скільки приніс один предмет після комісій. Підставлено сьогоднішню ціну за вирахуванням комісії Steam.",
+      sellLeft: "У портфелі залишиться {qty} шт.", sellCloses: "Позицію буде закрито.",
+      recordSale: "Позначити продаж", received: "Отримано", realizedLabel: "Реалізовано", soldFor: "Продано на {v}",
+      realizedProfit: "Реалізований прибуток", sales: "Продажі", saleSub: "{qty} шт. × {price} · {date}",
+      noSales: "Продажів поки немає. Позначити продаж можна в картці предмета.",
+      undoConfirm: "Скасувати продаж? {name}, {qty} шт., повернуться до портфеля за ціною купівлі.",
+      undoHint: "Натисніть на продаж, щоб скасувати його.",
+      syncNew: "Нове в інвентарі Steam: {n}", syncReview: "Переглянути", syncGone: "Зникло з інвентарю Steam. Продали?",
+      syncDismiss: "Приховати", syncTitle: "Перевірка інвентарю", sync_on: "Увімк.", sync_off: "Вимк.",
+      syncHint: "Раз на день бот переглядає інвентар Steam, з якого ви імпортували предмети, і повідомляє про нові та зниклі. Сам нічого не додає і не видаляє.",
+      syncChecked: "Перевірено {ago}.", syncPrivate: "Інвентар приховано, перевірити його неможливо.",
+      syncNotFound: "Профіль Steam не знайдено.",
+      syncNone: "Імпортуйте інвентар один раз (вставте посилання на профіль Steam у пошук), і він перевірятиметься щодня.",
+      err_sell_qty: "У вас немає стільки.", err_no_sync: "Спочатку імпортуйте інвентар.",
+      act_sell: "Позначено продажів",
     },
   };
   const userLang = ((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code)
@@ -925,9 +973,11 @@
         pricedCost > 0 && h("div", { class: "hero-sub hint num" }, `${t("profitLabel")} `,
           h("span", { class: trend(pnl / pricedCost) }, `${money(pnl, true)} · ${percent(pnl / pricedCost)}`),
           noBuy > 0 && ` · ${t("pnlScope", { n: tracked, total: p.items.length })}`),
+        realizedLine(p.realized),
         pending > 0 && h("div", { class: "progress" },
           h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
           progressBar((p.items.length - pending) / p.items.length))),
+      syncCard(p.sync),
       p.offer_digest && digestOffer(),
       chartSection(),
       range,
@@ -1011,7 +1061,8 @@
         h("div", { class: "empty-icon", "aria-hidden": "true" }, "📦"),
         h("div", { class: "empty-title" }, t("emptyTitle")),
         h("p", { class: "empty-text" }, t("emptyText")),
-      ), ...(watchSection(p) || []), p.is_admin && h("p", { class: "foot" }, h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
+        realizedLine(p.realized),
+      ), syncCard(p.sync), ...(watchSection(p) || []), p.is_admin && h("p", { class: "foot" }, h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
       bottomNav()]);
       return;
     }
@@ -1038,10 +1089,12 @@
         (pricedCost > 0 || cost > 0) && h("div", { class: "hero-sub hint num" }, `${t("invested")} ${money(pricedCost)}`,
           cost > pricedCost && ` ${t("unpricedCost", { cost: money(cost - pricedCost) })}`),
         noBuy > 0 && pricedCost === 0 && h("div", { class: "hero-sub hint" }, t("withoutBuy", { n: noBuy })),
+        !state.selected && realizedLine(p.realized),
         pending > 0 && h("div", { class: "progress" },
           h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
           progressBar((p.items.length - pending) / p.items.length)),
       ),
+      !state.selected && syncCard(p.sync),
       toolbar(p.items),
       h("ul", { class: "list" }, items.map(homeRow)),
       ...(!state.selected && watchSection(p) || []),
@@ -1319,8 +1372,9 @@
   }
 
   // keep: after "import expired", carry the user's choices over to the fresh list.
-  async function loadInventory(q, { keep = false } = {}) {
-    if (!keep && imp.key === q && (imp.loading || imp.data)) { renderResults(); return; }
+  // preselect: hash names to tick (what the daily inventory check found).
+  async function loadInventory(q, { keep = false, preselect = null } = {}) {
+    if (!keep && !preselect && imp.key === q && (imp.loading || imp.data)) { renderResults(); return; }
     const kept = keep ? { selected: imp.selected, prices: imp.prices, mode: imp.mode } : null;
     resetImport();
     const ctrl = new AbortController();
@@ -1344,6 +1398,9 @@
         imp.selected = new Set([...kept.selected].filter((n) => names.has(n)));
         imp.prices = kept.prices;
         imp.mode = kept.mode;
+      } else if (preselect) {
+        const names = new Set(preselect);
+        imp.selected = new Set(free.filter((i) => names.has(i.hash_name)).slice(0, data.room).map((i) => i.hash_name));
       } else {
         // Cases and capsules are what people invest in; take everything if there are none.
         const containers = free.filter((i) => i.container);
@@ -1723,9 +1780,29 @@
         else alertUser(t("noWriteAccess"));
       } }, t("allow")));
 
+    // The daily inventory check: only once there is a profile to read.
+    const sync = prefs.sync;
+    const syncStatus = sync && (sync.error === "private" ? t("syncPrivate")
+      : sync.error === "not_found" ? t("syncNotFound") : t("syncChecked", { ago: ago(sync.checked_at) }));
+    const syncBody = sync ? [
+      segmentedControl([[true, t("sync_on")], [false, t("sync_off")]], sync.enabled, async (on) => {
+        try {
+          Object.assign(prefs, await api("/api/prefs", { method: "POST", body: { sync_enabled: on } }));
+          haptic.ok();
+        } catch (e) {
+          haptic.fail();
+          alertUser(errorText(e));
+          if (app.contains(hour)) rerender(); // back to what the server has
+        }
+      }, t("syncTitle")),
+      h("p", { class: "note" }, t("syncHint")),
+      h("p", { class: `note${sync.error ? " down" : ""}` }, syncStatus),
+    ] : [h("p", { class: "note" }, t("syncNone"))];
+
     return [
       permission,
       ...section(t("digestTitle"), digest, h("div", { class: "form spaced" }, hourRow), hint),
+      ...section(t("syncTitle"), ...syncBody),
       ...(portfolioAlerts.length ? section(t("portfolioAlerts"), h("ul", { class: "list" },
         portfolioAlerts.map((a) => alertRow(a, () => showAlertEditor(null, a, showNotifications))))) : []),
       ...(itemAlerts.length ? section(t("itemAlerts"), h("ul", { class: "list" }, itemAlerts.map((a) => alertRow(a, () =>
@@ -1892,8 +1969,9 @@
     }
   }
 
-  // On the item screen: "Notify me…" and, for items not owned, following the
-  // price (both in the head, where they are seen), plus this item's alerts.
+  // On the item screen: "Notify me…", "Sold…" for items owned and, for items not
+  // owned, following the price (all in the head, where they are seen), plus this
+  // item's alerts.
   function itemNotifications(item, reopen) {
     const actions = h("div", { class: "item-actions" });
     const list = h("section", { class: "item-alerts" });
@@ -1908,6 +1986,10 @@
           if (alertsFull()) alertUser(t("err_alerts_full"));
           else showAlertEditor(snapshot, null, reopen);
         } }, h("span", { "aria-hidden": "true" }, "🔔 "), t("notifyMe")),
+        held && h("button", { type: "button", class: "chip", onclick: () => {
+          haptic.tap();
+          showSell(held, null, reopen);
+        } }, h("span", { "aria-hidden": "true" }, "💰 "), t("sold")),
         !held && h("button", { type: "button", class: `chip${watched ? " on" : ""}`, "aria-pressed": String(watched), onclick: async () => {
           haptic.tap();
           try {
@@ -1976,6 +2058,203 @@
     ];
   }
 
+  // -- sales and the inventory check ------------------------------------------
+  // A sale reduces the position and keeps its result: realized profit, measured
+  // against the average price paid, like the profit on paper.
+
+  // Under the portfolio's profit; opens the list of sales.
+  function realizedLine(r) {
+    if (!r || !r.count) return null;
+    const ratio = r.profit != null && r.cost > 0 ? r.profit / r.cost : null;
+    return tappable(h("div", { class: "hero-sub hint num realized" },
+      r.profit == null ? t("soldFor", { v: money(r.proceeds) }) : [`${t("realizedLabel")} `,
+        h("span", { class: trend(ratio != null ? ratio : r.profit) },
+          money(r.profit, true), ratio != null && ` · ${percent(ratio)}`)],
+      r.profit != null && r.unknown > 0 && ` · ${t("pnlScope", { n: r.count - r.unknown, total: r.count })}`,
+      h("span", { class: "more" }, ` · ${t("sales")} ›`),
+    ), () => { haptic.tap(); showSales(); });
+  }
+
+  // item: the held position; qty: how many to start with (all of them by default).
+  function showSell(item, qtyStart, backTo) {
+    state.screen = "sell";
+    state.back = backTo;
+    setBack(true);
+    secondary.set(null);
+    const held = heldItem(item.hash_name) || item;
+    const qty = numberInput("numeric", String(Math.min(qtyStart || held.qty, held.qty)), "next");
+    const price = numberInput("decimal", held.price != null ? plainAmount(net(held.price)) : "", "done");
+    qty.addEventListener("keydown", (e) => { if (e.key === "Enter") price.focus(); });
+    price.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      price.blur();
+      main.tap();
+    });
+    const qtyField = h("label", { class: "field" }, h("span", {}, t("sellQty")), qty);
+    const priceField = h("label", { class: "field" }, h("span", {}, t("sellPrice")), price);
+    const note = h("p", { class: "note" });
+    const summary = h("div", {});
+
+    function values() {
+      const q = parseQty(qty.value);
+      const p = price.value.trim() === "" ? null : parseAmount(price.value);
+      return { q: q != null && q > 0 && q <= held.qty ? q : null, p };
+    }
+
+    function refresh() {
+      const { q, p } = values();
+      qtyField.classList.toggle("invalid", qty.value !== "" && q == null);
+      priceField.classList.toggle("invalid", price.value.trim() !== "" && p == null);
+      note.textContent = q == null
+        ? (held.buy_price == null ? t("hasNoPrice", { qty: held.qty }) : t("has", { qty: held.qty, price: money(held.buy_price) }))
+        : q === held.qty ? t("sellCloses") : t("sellLeft", { qty: held.qty - q });
+      const rows = [];
+      if (q != null && p != null) {
+        rows.push(summaryRow(t("received"), money(q * p)));
+        if (held.buy_price != null) {
+          const r = held.buy_price > 0 ? p / held.buy_price - 1 : null;
+          rows.push(summaryRow(t("realizedProfit"), money(q * (p - held.buy_price), true), r != null && [` ${percent(r)}`, trend(r)]));
+        }
+      }
+      summary.replaceChildren(...rows);
+      main.set(t("recordSale"), save, { enabled: q != null && p != null, busy: state.busy });
+    }
+    qty.addEventListener("input", refresh);
+    price.addEventListener("input", refresh);
+
+    async function save() {
+      const { q, p } = values();
+      if (state.busy || q == null || p == null) return;
+      state.busy = true;
+      refresh();
+      try {
+        setPortfolio(await api("/api/sales", { method: "POST", body: { hash_name: held.hash_name, qty: q, price: p } }));
+        haptic.ok();
+        state.busy = false;
+        showHome();
+      } catch (e) {
+        state.busy = false;
+        haptic.fail();
+        if (app.contains(qty)) refresh();
+        alertUser(errorText(e));
+      }
+    }
+
+    mount([
+      h("section", { class: "item-head compact" },
+        thumb(held.icon, 128),
+        h("div", { class: "item-name" }, held.name),
+        h("div", { class: "hint" }, t("sellTitle"))),
+      h("div", { class: "form" }, qtyField, priceField),
+      h("p", { class: "note" }, t("sellHint")),
+      note,
+      summary,
+    ]);
+    refresh();
+    setTimeout(() => price.focus(), 50);
+  }
+
+  function showSales() {
+    state.screen = "sales";
+    state.back = () => showHome();
+    setBack(true);
+    main.set(null);
+    secondary.set(null);
+    const box = h("div", {}, h("section", { class: "hero" }, h("div", { class: "sk sk-hero" })));
+    mount([h("h1", { class: "screen-title" }, t("sales")), box]);
+    const render = (sales, realized) => box.replaceChildren(...salesView(sales, realized, render));
+    api("/api/sales").then((data) => {
+      if (state.screen === "sales" && app.contains(box)) render(data.sales, data.realized);
+    }).catch((e) => {
+      if (state.screen === "sales" && app.contains(box)) {
+        box.replaceChildren(tappable(h("p", { class: "message tappable" }, errorText(e), h("br"), t("retry")), showSales));
+      }
+    });
+  }
+
+  function salesView(sales, r, rerender) {
+    if (!sales.length) return [h("p", { class: "message" }, t("noSales"))];
+    const ratio = r.profit != null && r.cost > 0 ? r.profit / r.cost : null;
+    const undo = async (sale) => {
+      if (state.busy || !(await confirmUser(t("undoConfirm", { qty: sale.qty, name: sale.name })))) return;
+      state.busy = true;
+      try {
+        const data = await api("/api/sales/delete", { method: "POST", body: { id: sale.id } });
+        setPortfolio(data.portfolio);
+        haptic.ok();
+        if (state.screen === "sales") rerender(data.sales, data.portfolio.realized);
+      } catch (e) {
+        haptic.fail();
+        alertUser(errorText(e));
+      }
+      state.busy = false;
+    };
+    return [
+      h("section", { class: "hero" },
+        r.profit != null
+          ? h("div", { class: `hero-value num ${trend(ratio != null ? ratio : r.profit)}` }, money(r.profit, true))
+          : h("div", { class: "hero-value num" }, money(r.proceeds)),
+        h("div", { class: "hero-sub hint num" }, r.profit != null ? t("realizedProfit") : t("received"),
+          ratio != null && ` · ${percent(ratio)}`,
+          r.profit != null && r.unknown > 0 && ` · ${t("pnlScope", { n: r.count - r.unknown, total: r.count })}`),
+        r.profit != null && h("div", { class: "hero-sub hint num" }, `${t("received")} ${money(r.proceeds)}`)),
+      h("ul", { class: "list" }, sales.map((sale) => {
+        const gain = sale.buy_price > 0 ? sale.price / sale.buy_price - 1 : null;
+        return tappable(h("li", { class: "row" },
+          thumb(sale.icon),
+          h("div", { class: "row-main" },
+            h("div", { class: "row-title" }, sale.name),
+            h("div", { class: "row-sub hint num" },
+              t("saleSub", { qty: sale.qty, price: money(sale.price), date: localDate(sale.sold_at) }))),
+          h("div", { class: "row-side num" },
+            h("div", { class: "row-value" }, money(sale.qty * sale.price)),
+            sale.profit != null && h("div", { class: `row-pnl ${trend(gain != null ? gain : sale.profit)}` },
+              money(sale.profit, true))),
+        ), () => { haptic.tap(); undo(sale); });
+      })),
+      h("p", { class: "foot hint" }, t("undoHint")),
+    ];
+  }
+
+  // What the daily inventory check found. Nothing changes until the user acts:
+  // new items open the import with them ticked, gone ones the sale screen.
+  function syncCard(sync) {
+    if (!sync) return null;
+    const dismiss = async () => {
+      haptic.tap();
+      try {
+        setPortfolio(await api("/api/sync/dismiss", { method: "POST", body: {} }));
+      } catch (e) {
+        alertUser(errorText(e));
+      }
+      if (state.screen === "home") showHome({ keepScroll: true });
+    };
+    const names = (list) => list.slice(0, 3).map((i) => i.name).join(", ") + (list.length > 3 ? ` +${list.length - 3}` : "");
+    return h("section", { class: "card sync-card" },
+      sync.new.length > 0 && h("div", { class: "sync-part" },
+        h("div", { class: "offer-title" }, t("syncNew", { n: sync.new.length })),
+        h("p", { class: "hint" }, names(sync.new)),
+        h("button", { type: "button", class: "offer-yes", onclick: () => {
+          haptic.tap();
+          search.query = sync.steamid;
+          showSearch();
+          loadInventory(sync.steamid, { preselect: sync.new.map((i) => i.hash_name) });
+        } }, t("syncReview"))),
+      sync.gone.length > 0 && h("div", { class: "sync-part" },
+        h("div", { class: "offer-title" }, t("syncGone")),
+        h("ul", { class: "top-list" }, sync.gone.map((g) => tappable(h("li", { class: "top-row" },
+          thumb(g.icon),
+          h("div", { class: "top-name" }, g.name),
+          h("div", { class: "top-values num" }, `−${g.qty}`),
+        ), () => {
+          const held = heldItem(g.hash_name);
+          if (!held) return;
+          haptic.tap();
+          showSell(held, g.qty, () => showHome());
+        })))),
+      h("button", { type: "button", class: "link-btn sync-dismiss", onclick: dismiss }, t("syncDismiss")));
+  }
+
   // -- screen: admin statistics ---------------------------------------------
   // Only reachable for ids in CS2BOT_ADMINS; the server checks it again.
 
@@ -2006,7 +2285,7 @@
     const row = (label, value) => h("li", { class: "row plain" },
       h("div", { class: "row-main" }, label), h("div", { class: "row-side num" }, value));
 
-    const actions = ["open", "search", "inventory", "import", "add", "edit", "remove", "watch", "alert", "digest", "bot"]
+    const actions = ["open", "search", "inventory", "import", "add", "edit", "remove", "sell", "watch", "alert", "digest", "bot"]
       .filter((k) => d.actions_7d[k]);
     const p = d.prices;
 

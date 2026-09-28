@@ -6,6 +6,7 @@ database was created with.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from collections import defaultdict
@@ -92,6 +93,29 @@ CREATE TABLE IF NOT EXISTS prefs (
     digest_offered INTEGER NOT NULL DEFAULT 0,
     write_access   INTEGER NOT NULL DEFAULT 0    -- the bot may message this user
 );
+-- Sold items, against the average price paid at the time (the basis of unrealized profit too).
+CREATE TABLE IF NOT EXISTS sales (
+    id          INTEGER PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    hash_name   TEXT NOT NULL,
+    qty         INTEGER NOT NULL CHECK (qty > 0),
+    price_cents INTEGER NOT NULL CHECK (price_cents >= 0),  -- received per item, after fees
+    buy_cents   INTEGER CHECK (buy_cents >= 0),             -- NULL: price paid unknown
+    sold_at     REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sales_user ON sales (user_id, sold_at);
+-- The Steam inventory a user last imported from, re-read once a day.
+CREATE TABLE IF NOT EXISTS inventory_sync (
+    user_id      INTEGER PRIMARY KEY,
+    steamid      TEXT NOT NULL,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    snapshot     TEXT NOT NULL,              -- JSON {{hash name: qty}} as last seen
+    pending_new  TEXT NOT NULL DEFAULT '[]', -- JSON [hash name]: appeared since, not reviewed yet
+    pending_gone TEXT NOT NULL DEFAULT '{{}}', -- JSON {{hash name: qty}}: held items that left it
+    checked_at   REAL NOT NULL,
+    next_at      REAL NOT NULL,
+    error        TEXT                        -- private | not_found; NULL when the last read worked
+);
 """.format(holdings=HOLDINGS_DDL)
 
 PRICE_HISTORY_DDL = """
@@ -115,7 +139,7 @@ CREATE TABLE IF NOT EXISTS holding_history (
 """
 HOLDING_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS holding_history_user_day ON holding_history (user_id, day)"
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # A CS2 seller gets the buyer's price minus 5% Steam + 10% game fee.
 STEAM_FEE_PERCENT = 15
@@ -133,6 +157,8 @@ MAX_WATCHED = 50
 ITEM_METRICS = ("price", "profit")
 PORTFOLIO_METRICS = ("value_pct", "value_amount")
 DIGESTS = ("off", "daily", "weekly")
+# An inventory is re-read at most this often per user.
+SYNC_EVERY = 86400
 
 
 class StoreError(Exception):
@@ -254,6 +280,10 @@ class Store:
                     "UNION SELECT DISTINCT user_id, 1 FROM events WHERE kind = 'bot'"
                 )
                 self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', '7')")
+        if version < 8:
+            # sales and inventory_sync come from SCHEMA.
+            with self.conn:
+                self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', '8')")
 
     def _reconcile_holding_history(self) -> None:
         """Records quantities changed without this code (an older release, manual SQL).
@@ -440,21 +470,24 @@ class Store:
         If either side's price is unknown the average is unknown too (NULL).
         """
         with self.conn:
-            old = self._qty(user_id, hash_name)
-            cur = self.conn.execute(
-                """INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at) VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(user_id, hash_name) DO UPDATE SET
-                     buy_cents = (qty * buy_cents + excluded.qty * excluded.buy_cents
-                                  + (qty + excluded.qty) / 2) / (qty + excluded.qty),
-                     qty = qty + excluded.qty,
-                     buy_at_market = 0
-                   WHERE qty + excluded.qty <= ?""",
-                (user_id, hash_name, qty, buy_cents, time.time(), MAX_QTY),
-            )
-            if cur.rowcount:
-                self._quantity_changed(user_id, hash_name, old, self._qty(user_id, hash_name))
+            self._add_lot(user_id, hash_name, qty, buy_cents)
+
+    def _add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None) -> None:
+        """add_lot inside the caller's transaction."""
+        old = self._qty(user_id, hash_name)
+        cur = self.conn.execute(
+            """INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at) VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, hash_name) DO UPDATE SET
+                 buy_cents = (qty * buy_cents + excluded.qty * excluded.buy_cents
+                              + (qty + excluded.qty) / 2) / (qty + excluded.qty),
+                 qty = qty + excluded.qty,
+                 buy_at_market = 0
+               WHERE qty + excluded.qty <= ?""",
+            (user_id, hash_name, qty, buy_cents, time.time(), MAX_QTY),
+        )
         if cur.rowcount == 0:
             raise QuantityLimit(f"at most {MAX_QTY} of one item")
+        self._quantity_changed(user_id, hash_name, old, self._qty(user_id, hash_name))
 
     def import_items(self, user_id: int, rows: list[tuple[str, int, int | None, bool]]) -> int:
         """(hash name, qty, buy cents or None, take first market price); held items are skipped."""
@@ -505,6 +538,205 @@ class Store:
             "SELECT qty FROM holdings WHERE user_id = ? AND hash_name = ?", (user_id, hash_name)
         ).fetchone()
         return row[0] if row else 0
+
+    # -- sales ---------------------------------------------------------------
+
+    def sell(self, user_id: int, hash_name: str, qty: int, price_cents: int, at: float | None = None) -> int | None:
+        """Records a sale and reduces the position; None when fewer than `qty` are held.
+
+        The sale keeps the average price paid, so realized and unrealized profit
+        share one basis and add up. The remaining position keeps its average.
+        """
+        at = time.time() if at is None else at
+        with self.conn:
+            row = self.conn.execute(
+                "SELECT qty, buy_cents FROM holdings WHERE user_id = ? AND hash_name = ?", (user_id, hash_name)
+            ).fetchone()
+            if row is None or row["qty"] < qty:
+                return None
+            if row["qty"] == qty:
+                self.conn.execute("DELETE FROM holdings WHERE user_id = ? AND hash_name = ?", (user_id, hash_name))
+            else:
+                self.conn.execute("UPDATE holdings SET qty = qty - ? WHERE user_id = ? AND hash_name = ?",
+                                  (qty, user_id, hash_name))
+            self._quantity_changed(user_id, hash_name, row["qty"], row["qty"] - qty, at)
+            self._settle_gone(user_id, hash_name, qty)
+            return self.conn.execute(
+                "INSERT INTO sales (user_id, hash_name, qty, price_cents, buy_cents, sold_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, hash_name, qty, price_cents, row["buy_cents"], at),
+            ).lastrowid
+
+    def undo_sale(self, user_id: int, sale_id: int) -> bool:
+        """Deletes a sale and puts its items back at the price paid; raises QuantityLimit."""
+        with self.conn:
+            sale = self.conn.execute(
+                "SELECT hash_name, qty, buy_cents FROM sales WHERE id = ? AND user_id = ?", (sale_id, user_id)
+            ).fetchone()
+            if sale is None:
+                return False
+            self._add_lot(user_id, sale["hash_name"], sale["qty"], sale["buy_cents"])
+            self.conn.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
+        return True
+
+    def sale(self, user_id: int, sale_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM sales WHERE id = ? AND user_id = ?", (sale_id, user_id)).fetchone()
+        return dict(row) if row else None
+
+    def sales(self, user_id: int) -> list[dict]:
+        """Newest first."""
+        rows = self.conn.execute(
+            """SELECT s.id, s.hash_name, COALESCE(i.name, s.hash_name) AS name, i.icon,
+                      s.qty, s.price_cents, s.buy_cents, s.sold_at
+               FROM sales s LEFT JOIN items i ON i.hash_name = s.hash_name
+               WHERE s.user_id = ? ORDER BY s.sold_at DESC, s.id DESC""",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def realized(self, user_id: int) -> dict:
+        """Realized profit in cents over the sales whose price paid is known."""
+        # TOTAL, not SUM: SUM raises on int64 overflow, which enough huge sales would reach.
+        row = self.conn.execute(
+            """SELECT COUNT(*), TOTAL(qty * price_cents),
+                      TOTAL(CASE WHEN buy_cents IS NOT NULL THEN qty * price_cents END),
+                      TOTAL(qty * buy_cents), COUNT(buy_cents)
+               FROM sales WHERE user_id = ?""",
+            (user_id,),
+        ).fetchone()
+        count, proceeds, known_proceeds, cost, known = row
+        return {"count": count, "proceeds": round(proceeds), "unknown": count - known,
+                "cost": round(cost) if known else None,
+                "profit": round(known_proceeds - cost) if known else None}
+
+    # -- inventory sync --------------------------------------------------------
+
+    def remember_inventory(self, user_id: int, steamid: str, items: dict[str, int], at: float | None = None) -> None:
+        """After an import: the profile to re-read, and what it held just now.
+
+        Importing from the same profile counts as reviewing what was new; a
+        different profile starts over. Turning the check off survives either.
+        """
+        at = time.time() if at is None else at
+        snapshot = json.dumps(items, ensure_ascii=False, sort_keys=True)
+        with self.conn:
+            old = self.conn.execute("SELECT steamid FROM inventory_sync WHERE user_id = ?", (user_id,)).fetchone()
+            self.conn.execute(
+                """INSERT INTO inventory_sync (user_id, steamid, snapshot, checked_at, next_at) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET steamid = excluded.steamid, snapshot = excluded.snapshot,
+                     checked_at = excluded.checked_at, next_at = excluded.next_at, error = NULL,
+                     pending_new = '[]'""",
+                (user_id, steamid, snapshot, at, at + SYNC_EVERY),
+            )
+            if old is not None and old[0] != steamid:
+                self.conn.execute("UPDATE inventory_sync SET pending_gone = '{}' WHERE user_id = ?", (user_id,))
+
+    def sync_settings(self, user_id: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT steamid, enabled, checked_at, error FROM inventory_sync WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return None if row is None else dict(row) | {"enabled": bool(row["enabled"])}
+
+    def set_sync_enabled(self, user_id: int, enabled: bool) -> bool:
+        """False when no profile is remembered yet."""
+        with self.conn:
+            return self.conn.execute(
+                "UPDATE inventory_sync SET enabled = ? WHERE user_id = ?", (int(enabled), user_id)
+            ).rowcount > 0
+
+    def due_syncs(self, now: float, limit: int = 1) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT user_id, steamid FROM inventory_sync WHERE enabled = 1 AND next_at <= ? ORDER BY next_at LIMIT ?",
+            (now, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def postpone_sync(self, user_id: int, steamid: str, until: float, error: str | None = None) -> None:
+        """A read that failed: try again at `until`. `error` is what the user sees."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE inventory_sync SET next_at = ?, error = COALESCE(?, error) WHERE user_id = ? AND steamid = ?",
+                (until, error, user_id, steamid),
+            )
+
+    def record_sync(self, user_id: int, steamid: str, items: dict[str, int],
+                    at: float | None = None) -> tuple[list[str], dict[str, int]]:
+        """Stores a fresh read; returns what it found (new names, {held name: qty gone}).
+
+        New: marketable items that weren't there last time and aren't held.
+        Gone: fewer of a held item than last time, capped at the quantity held.
+        Both add to what is waiting for the user until they review it.
+        """
+        at = time.time() if at is None else at
+        with self.conn:
+            row = self.conn.execute(
+                "SELECT snapshot, pending_new, pending_gone FROM inventory_sync WHERE user_id = ? AND steamid = ?",
+                (user_id, steamid),
+            ).fetchone()
+            if row is None:  # the user imported another profile meanwhile
+                return [], {}
+            before = json.loads(row["snapshot"])
+            held = dict(self.conn.execute(
+                "SELECT hash_name, qty FROM holdings WHERE user_id = ?", (user_id,)).fetchall())
+            new = [name for name in items if name not in before and name not in held]
+            gone = {name: min(before[name] - items.get(name, 0), held[name])
+                    for name in before if name in held and items.get(name, 0) < before[name]}
+            pending_new = json.loads(row["pending_new"])
+            pending_new += [name for name in new if name not in pending_new]
+            pending_gone = json.loads(row["pending_gone"])
+            for name, qty in gone.items():
+                pending_gone[name] = pending_gone.get(name, 0) + qty
+            self.conn.execute(
+                """UPDATE inventory_sync SET snapshot = ?, pending_new = ?, pending_gone = ?, checked_at = ?,
+                     next_at = ?, error = NULL WHERE user_id = ?""",
+                (json.dumps(items, ensure_ascii=False, sort_keys=True), json.dumps(pending_new, ensure_ascii=False),
+                 json.dumps(pending_gone, ensure_ascii=False), at, at + SYNC_EVERY, user_id),
+            )
+        return new, gone
+
+    def pending_sync(self, user_id: int) -> dict | None:
+        """What the last reads found that still needs a look, or None.
+
+        Checked against the holdings now: an item imported since is no longer new,
+        and "gone" never exceeds what is still held.
+        """
+        row = self.conn.execute(
+            "SELECT steamid, snapshot, pending_new, pending_gone FROM inventory_sync WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        held = dict(self.conn.execute("SELECT hash_name, qty FROM holdings WHERE user_id = ?", (user_id,)).fetchall())
+        snapshot = json.loads(row["snapshot"])
+        new = [(name, snapshot[name]) for name in json.loads(row["pending_new"])
+               if name not in held and name in snapshot]
+        gone = [(name, min(qty, held[name])) for name, qty in json.loads(row["pending_gone"]).items()
+                if name in held and qty > 0]
+        if not new and not gone:
+            return None
+        names = dict((r[0], (r[1], r[2])) for r in self.conn.execute(
+            "SELECT hash_name, name, icon FROM items WHERE hash_name IN (%s)" % ",".join("?" * (len(new) + len(gone))),
+            [n for n, _ in new + gone]).fetchall())
+        entry = lambda name, qty: {"hash_name": name, "name": names.get(name, (name,))[0],  # noqa: E731
+                                   "icon": names.get(name, (None, None))[1], "qty": qty}
+        return {"steamid": row["steamid"], "new": [entry(*x) for x in new], "gone": [entry(*x) for x in gone]}
+
+    def dismiss_sync(self, user_id: int) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE inventory_sync SET pending_new = '[]', pending_gone = '{}' WHERE user_id = ?",
+                              (user_id,))
+
+    def _settle_gone(self, user_id: int, hash_name: str, qty: int) -> None:
+        """A recorded sale answers "gone from the inventory, sold?" for that many."""
+        row = self.conn.execute("SELECT pending_gone FROM inventory_sync WHERE user_id = ?", (user_id,)).fetchone()
+        if row is None:
+            return
+        gone = json.loads(row[0])
+        if hash_name not in gone:
+            return
+        left = gone.pop(hash_name) - qty
+        if left > 0:
+            gone[hash_name] = left
+        self.conn.execute("UPDATE inventory_sync SET pending_gone = ? WHERE user_id = ?",
+                          (json.dumps(gone, ensure_ascii=False), user_id))
 
     def portfolio_history(self, user_id: int, days: int = 30, now: float | None = None) -> dict:
         """Daily net value of a portfolio, and how much of its change the market made.

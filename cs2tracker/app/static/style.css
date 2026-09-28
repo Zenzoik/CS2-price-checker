@@ -339,3 +339,12 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 .row.compact + .row.compact::before { left: 14px; }
 /* In dark themes the card colour is darker than the track: lift the chosen segment. */
 :root[data-scheme="dark"] .segmented button.active { background: rgba(255, 255, 255, 0.16); }
+
+/* Sales and the inventory check ------------------------------------------ */
+.realized { cursor: pointer; }
+.realized .more { color: var(--accent); }
+.sync-card { margin: 6px 0 12px; }
+.sync-card p { margin: 4px 0 12px; font-size: 14px; }
+.sync-part + .sync-part { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--sep); }
+.sync-card .top-list { margin-top: 4px; }
+.sync-dismiss { display: block; margin: 10px 0 -4px; font-size: 14px; }

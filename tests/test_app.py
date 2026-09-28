@@ -493,7 +493,8 @@ def test_api_add_edit_delete_flow(tmp_path):
         body = await r.json()
         assert body.pop("version") and body.pop("is_admin") is False
         assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": [],
-                        "watching": [], "can_notify": False, "offer_digest": False}
+                        "watching": [], "can_notify": False, "offer_digest": False, "sync": None,
+                        "realized": {"count": 0, "proceeds": 0.0, "cost": None, "profit": None, "unknown": 0}}
 
         found = await (await client.get("/api/search", params={"q": "breakout"}, headers=auth())).json()
         assert found["results"] == [{"hash_name": CASE, "name": CASE, "icon": "abc", "held": False}]

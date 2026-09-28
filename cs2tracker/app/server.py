@@ -183,13 +183,17 @@ async def index(request: web.Request) -> web.Response:
 
 
 async def portfolio(request: web.Request) -> web.Response:
+    if request.query.get("open") == "1":
+        _event(request, "open")
+    return web.json_response(_portfolio_json(request))
+
+
+def _portfolio_json(request: web.Request) -> dict:
     store = request.app[STORE]
     settings = request.app[SETTINGS]
     holdings = store.holdings(request[USER_ID])
     stamps = [h.price_updated for h in holdings if h.price_updated is not None]
-    if request.query.get("open") == "1":
-        _event(request, "open")
-    return web.json_response({
+    return {
         "is_admin": request[USER_ID] in settings.admins,
         "currency": store.currency,
         "version": request.app[VERSION],  # an open app reloads itself when this changes
@@ -199,7 +203,9 @@ async def portfolio(request: web.Request) -> web.Response:
         "watching": [_watch_json(w) for w in store.watching(request[USER_ID])],
         "can_notify": bool(store.prefs(request[USER_ID])["write_access"]),
         "offer_digest": store.offer_digest(request[USER_ID]),
-    })
+        "realized": _realized_json(store.realized(request[USER_ID])),
+        "sync": store.pending_sync(request[USER_ID]),
+    }
 
 
 async def portfolio_history(request: web.Request) -> web.Response:
@@ -380,9 +386,61 @@ async def import_items(request: web.Request) -> web.Response:
     if len(held) + len(rows) > request.app[SETTINGS].max_items:
         raise ApiError(400, "full", "Portfolio is full")
     added = store.import_items(user_id, list(rows.values()))
+    # Remembered for the daily check: what is in this inventory now isn't "new" later.
+    store.remember_inventory(user_id, preview[1], preview[2])
     if added:
         _event(request, "import", added)
     prices.wake()
+    return await portfolio(request)
+
+
+async def sell(request: web.Request) -> web.Response:
+    """{"hash_name", "qty", "price"}: `price` is what one item brought, after fees."""
+    body = await _json_body(request)
+    hash_name = _hash_name(body.get("hash_name"))
+    qty = _qty(body.get("qty"))
+    price_cents = _price_cents(body.get("price"))
+    user_id = request[USER_ID]
+    store = request.app[STORE]
+    request.app[WRITE_LIMITER].check(user_id)
+    if store.sell(user_id, hash_name, qty, price_cents) is None:
+        if store.holding(user_id, hash_name) is None:
+            raise ApiError(404, "gone", "This item is no longer in your portfolio")
+        raise ApiError(400, "sell_qty", "You don't hold that many")
+    _event(request, "sell")
+    return await portfolio(request)
+
+
+async def list_sales(request: web.Request) -> web.Response:
+    store = request.app[STORE]
+    return web.json_response({"sales": [_sale_json(s) for s in store.sales(request[USER_ID])],
+                              "realized": _realized_json(store.realized(request[USER_ID]))})
+
+
+async def undo_sale(request: web.Request) -> web.Response:
+    """{"id"}: deletes a sale and returns its items to the portfolio at the price paid."""
+    body = await _json_body(request)
+    sale_id = _row_id(body.get("id"), "Unknown sale")
+    user_id = request[USER_ID]
+    store = request.app[STORE]
+    request.app[WRITE_LIMITER].check(user_id)
+    sale = store.sale(user_id, sale_id)
+    if sale is None:
+        raise ApiError(404, "gone", "This sale no longer exists")
+    if store.holding(user_id, sale["hash_name"]) is None:
+        _check_room(request)
+    try:
+        store.undo_sale(user_id, sale_id)
+    except QuantityLimit as e:
+        raise ApiError(400, "too_many", f"At most {MAX_QTY:,} of one item") from e
+    return web.json_response({"sales": [_sale_json(s) for s in store.sales(user_id)],
+                              "portfolio": _portfolio_json(request)})
+
+
+async def dismiss_sync(request: web.Request) -> web.Response:
+    """Hides what the inventory check found until it finds something again."""
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    request.app[STORE].dismiss_sync(request[USER_ID])
     return await portfolio(request)
 
 
@@ -415,7 +473,7 @@ async def save_alert(request: web.Request) -> web.Response:
     user_id = request[USER_ID]
     store = request.app[STORE]
     request.app[WRITE_LIMITER].check(user_id)
-    alert_id = None if body.get("id") is None else _alert_id(body.get("id"))
+    alert_id = None if body.get("id") is None else _row_id(body.get("id"), "Unknown alert")
     hash_name = None if body.get("hash_name") is None else _hash_name(body.get("hash_name"))
     metric = body.get("metric")
     above = body.get("above")
@@ -444,18 +502,20 @@ async def save_alert(request: web.Request) -> web.Response:
 async def delete_alert(request: web.Request) -> web.Response:
     body = await _json_body(request)
     request.app[WRITE_LIMITER].check(request[USER_ID])
-    request.app[STORE].delete_alert(request[USER_ID], _alert_id(body.get("id")))
+    request.app[STORE].delete_alert(request[USER_ID], _row_id(body.get("id"), "Unknown alert"))
     return await list_alerts(request)
 
 
 async def get_prefs(request: web.Request) -> web.Response:
-    prefs = request.app[STORE].prefs(request[USER_ID])
+    store = request.app[STORE]
+    prefs = store.prefs(request[USER_ID])
     return web.json_response({"digest": prefs["digest"], "digest_hour": prefs["digest_hour"],
-                              "tz": prefs["tz"], "can_notify": bool(prefs["write_access"])})
+                              "tz": prefs["tz"], "can_notify": bool(prefs["write_access"]),
+                              "sync": store.sync_settings(request[USER_ID])})
 
 
 async def save_prefs(request: web.Request) -> web.Response:
-    """Any of {digest, digest_hour, tz, digest_offered, write_access}."""
+    """Any of {digest, digest_hour, tz, digest_offered, write_access, sync_enabled}."""
     body = await _json_body(request)
     user_id = request[USER_ID]
     store = request.app[STORE]
@@ -480,6 +540,11 @@ async def save_prefs(request: web.Request) -> web.Response:
             if not isinstance(body[key], bool):
                 raise ApiError(400, "invalid", f"{key} must be true or false")
             changes[key] = int(body[key])
+    if "sync_enabled" in body:
+        if not isinstance(body["sync_enabled"], bool):
+            raise ApiError(400, "invalid", "sync_enabled must be true or false")
+        if not store.set_sync_enabled(user_id, body["sync_enabled"]):
+            raise ApiError(400, "no_sync", "Import your inventory first")
     if {"digest", "digest_hour", "tz"} & changes.keys():
         # A slot that already passed today waits for tomorrow, not "right now".
         # Never clear it: a digest already sent today must not come twice.
@@ -581,9 +646,9 @@ def _number(value) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def _alert_id(value) -> int:
+def _row_id(value, message: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 < value < 2**63:
-        raise ApiError(400, "invalid", "Unknown alert")
+        raise ApiError(400, "invalid", message)
     return value
 
 
@@ -628,6 +693,19 @@ def _alert_json(a: dict) -> dict:
         "fired_at": a["fired_at"], "created_at": a["created_at"], "baseline": _money(a["baseline"]),
         "price": _money(a["price_cents"]),
     }
+
+
+def _sale_json(s: dict) -> dict:
+    return {
+        "id": s["id"], "hash_name": s["hash_name"], "name": s["name"], "icon": s["icon"], "qty": s["qty"],
+        "price": _money(s["price_cents"]), "buy_price": _money(s["buy_cents"]), "sold_at": s["sold_at"],
+        "profit": None if s["buy_cents"] is None else _money(s["qty"] * (s["price_cents"] - s["buy_cents"])),
+    }
+
+
+def _realized_json(r: dict) -> dict:
+    return {"count": r["count"], "proceeds": _money(r["proceeds"]), "cost": _money(r["cost"]),
+            "profit": _money(r["profit"]), "unknown": r["unknown"]}
 
 
 def _watch_json(w: dict) -> dict:
@@ -688,6 +766,10 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_post("/api/import", import_items)
     app.router.add_get("/api/admin/stats", admin_stats)
     app.router.add_post("/api/watch", watch)
+    app.router.add_post("/api/sales", sell)
+    app.router.add_get("/api/sales", list_sales)
+    app.router.add_post("/api/sales/delete", undo_sale)
+    app.router.add_post("/api/sync/dismiss", dismiss_sync)
     app.router.add_get("/api/alerts", list_alerts)
     app.router.add_post("/api/alerts", save_alert)
     app.router.add_post("/api/alerts/delete", delete_alert)
