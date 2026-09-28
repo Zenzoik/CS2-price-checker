@@ -150,6 +150,10 @@ class Store:
                 (int(user["id"]), text("username"), text("first_name"), text("language_code"), at, at, via),
             )
 
+    def user_language(self, user_id: int) -> str | None:
+        row = self.conn.execute("SELECT language FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        return row[0] if row else None
+
     def log_event(self, user_id: int, kind: str, n: int = 1, at: float | None = None) -> None:
         with self.conn:
             self.conn.execute("INSERT INTO events VALUES (?, ?, ?, ?)",

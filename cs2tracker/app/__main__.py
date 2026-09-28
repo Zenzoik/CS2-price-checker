@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import time
 import sqlite3
@@ -14,6 +15,7 @@ from aiohttp import web
 
 from ..steam import SteamMarket
 from .db import Store, StoreError
+from .monitor import AdminAlerts, HealthMonitor
 from .prices import InventoryService, PriceService
 from .server import create_app
 from .settings import SettingsError, load_app_settings
@@ -22,15 +24,17 @@ from .telegram import TelegramBot
 log = logging.getLogger("cs2tracker")
 
 
-async def supervise(name: str, job) -> None:
+async def supervise(name: str, job, alerts: AdminAlerts | None = None) -> None:
     """Keeps one background job alive; its failure never takes the web server down."""
     while True:
         try:
             await job()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as e:
             log.exception("%s crashed, restarting in 30s", name)
+            if alerts is not None:
+                await alerts.event("job_crashed", job=name, error=f"{type(e).__name__}: {e}")
         await asyncio.sleep(30)
 
 
@@ -52,15 +56,41 @@ async def serve() -> None:
                                                server_retries=0, timeout=15.0))
     runner = web.AppRunner(create_app(settings, store, prices, inventories), access_log=None)
     await runner.setup()
+    # Left behind only if the process died without cleaning up: a crash. Written
+    # only once we own the port, with our PID, so a second instance that fails to
+    # start can neither raise a false alarm nor delete the running one's marker.
+    marker = settings.db_path.with_name(settings.db_path.name + ".running")
+    own_marker = False
     try:
         await web.TCPSite(runner, settings.host, settings.port).start()
+        crashed_before = marker.exists()
+        marker.write_text(str(os.getpid()))
+        own_marker = True
         log.info("Mini App on http://%s:%d (public: %s)", settings.host, settings.port, settings.public_url)
         async with aiohttp.ClientSession() as session:
             bot = TelegramBot(settings, session, store)
-            await asyncio.gather(supervise("Price refresh", prices.run), supervise("Telegram bot", bot.run))
+            alerts = AdminAlerts(bot.notify_admins)
+            monitor = HealthMonitor(prices, alerts, db_path=settings.db_path,
+                                    backup_dir=settings.backups, backup_keep=settings.backup_keep)
+            if crashed_before:
+                await alerts.event("restarted")
+            await asyncio.gather(
+                supervise("Price refresh", prices.run, alerts),
+                supervise("Telegram bot", bot.run, alerts),
+                supervise("Health monitor", monitor.run, alerts),
+            )
     finally:
         await runner.cleanup()
         store.close()
+        if own_marker and _read(marker) == str(os.getpid()):
+            marker.unlink(missing_ok=True)
+
+
+def _read(path) -> str | None:
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return None
 
 
 async def run_until_stopped() -> None:

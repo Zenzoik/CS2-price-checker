@@ -35,6 +35,13 @@ class AppSettings:
     # Telegram user ids that see the usage statistics.
     admins: frozenset[int] = frozenset()
     max_items: int = 200
+    # Daily database copies; None = a "backups" folder next to the database.
+    backup_dir: Path | None = None
+    backup_keep: int = 14
+
+    @property
+    def backups(self) -> Path:
+        return self.backup_dir or self.db_path.parent / "backups"
 
     def allows(self, user_id: int) -> bool:
         return not self.allowed_users or user_id in self.allowed_users or user_id in self.admins
@@ -82,6 +89,8 @@ def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
         allowed_users=allowed,
         admins=admins,
         max_items=int(_number(get, "MAX_ITEMS", 200, 1, 10000)),
+        backup_dir=Path(get("BACKUP_DIR")).expanduser() if get("BACKUP_DIR") else None,
+        backup_keep=int(_number(get, "BACKUP_KEEP", 14, 1, 3650)),
     )
 
 

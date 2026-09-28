@@ -19,12 +19,15 @@ Research that led to some of these items, including options we rejected for now,
 
 Do this first. It is small, and every later phase writes more data we would not want to lose.
 
-### 0.1 Daily database backups (S)
+### 0.1 Daily database backups (S) ✅ done
 - **Why:** backups are made by hand only before risky deploys. A disk failure or a bad migration would lose every portfolio.
-- **What:** a systemd timer on the server runs SQLite's online backup API every night into `/var/backups/cs2tracker/`, keeps 14 days, and prunes older files. It is the same method as the manual backups.
+- **What was built:** the service backs itself up (`cs2tracker/app/backup.py`, scheduled by the health monitor) instead of a systemd timer.
+  - Once a day it writes an integrity-checked copy through SQLite's online backup API into `backups/` next to the database, and keeps 14 of them (`CS2BOT_BACKUP_DIR`, `CS2BOT_BACKUP_KEEP`).
+  - Running inside the service means the same (dynamic) user owns every file. A root timer opening the WAL database could leave root-owned `-shm`/`-wal` files the service then can't open.
+- **Still open:** the backups live on the same disk as the database. An off-server copy, such as rsync to another host, is a follow-up.
 - **Done when:** a backup appears every day, a restore has been tested once on a copy, and the steps are written in the README.
 
-### 0.2 Admin alerts (S)
+### 0.2 Admin alerts (S) ✅ done
 - **Why:** today we only notice that Steam is failing, or that prices stopped updating, when the app looks wrong.
 - **What:** the bot messages everyone in `CS2BOT_ADMINS` when:
   - a refresh pass hasn't finished for more than 1 hour;

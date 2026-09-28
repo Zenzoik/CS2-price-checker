@@ -109,6 +109,18 @@ Besides the Google Sheet, the tracker can run as a Telegram bot with a Mini App.
 4. Copy [`deploy/app.env.example`](deploy/app.env.example) to `/etc/cs2tracker/app.env`. Fill in `CS2BOT_TOKEN` and `CS2BOT_URL`, and optionally `CS2BOT_ALLOWED_USERS` to keep the bot private.
 5. Run it with `python -m cs2tracker.app`, or as a service: [`deploy/cs2tracker-app.service`](deploy/cs2tracker-app.service).
 
+**Backups and alerts.** Once a day the service writes a checked copy of the database to `backups/` next to it (with the systemd unit: `/var/lib/cs2tracker/backups/`) and keeps the last 14. Admins in `CS2BOT_ADMINS` get a Telegram message when prices stop updating, Steam keeps failing for 30 minutes, a backup fails or the service restarts after a crash, and another when it is fixed. To restore a backup:
+
+```bash
+systemctl stop cs2tracker-app
+cd /var/lib/private/cs2tracker
+cp cs2tracker.db cs2tracker.db.before-restore        # just in case
+cp backups/cs2tracker-YYYYMMDD-HHMMSS.db cs2tracker.db
+rm -f cs2tracker.db-wal cs2tracker.db-shm
+chown --reference=. cs2tracker.db                    # the service's dynamic user
+systemctl start cs2tracker-app
+```
+
 On start the bot sets its menu button to open the app, and it answers any message with an **Open portfolio** button. The app speaks English, Russian and Ukrainian, following the user's Telegram language.
 
 All prices use one currency (`CS2BOT_CURRENCY`, default UAH). The database remembers it and refuses to start with a different one, so prices never get mixed. Large imports are priced one item at a time (about 40 per minute) while Home shows the progress; ideas for faster estimates are in [docs/ideas.md](docs/ideas.md). Planned features are in [docs/roadmap.md](docs/roadmap.md). The [same rules](#how-prices-are-fetched) apply for which currencies and price kinds work from your server's IP.

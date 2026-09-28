@@ -49,6 +49,41 @@ def texts(language_code: str | None) -> dict[str, str]:
     return TEXTS.get((language_code or "")[:2].lower(), TEXTS["en"])
 
 
+# Messages to CS2BOT_ADMINS from the health monitor. `{…}` come from the alert.
+ADMIN_TEXTS = {
+    "en": {
+        "refresh_stuck": "⚠️ Prices haven't been refreshed for {minutes} min. The refresh loop may be stuck.",
+        "refresh_stuck_ok": "✅ Price refresh is running again.",
+        "steam_failing": "⚠️ Steam has been failing for {minutes} min, prices aren't updating.\nLast error: {error}",
+        "steam_failing_ok": "✅ Steam answers again, prices are updating.",
+        "backup_failed": "⚠️ Daily database backup failed: {error}",
+        "backup_failed_ok": "✅ Database backup works again.",
+        "restarted": "♻️ The service restarted after an unexpected stop.",
+        "job_crashed": "💥 {job} crashed and is restarting: {error}",
+    },
+    "ru": {
+        "refresh_stuck": "⚠️ Цены не обновлялись {minutes} мин. Возможно, завис цикл обновления.",
+        "refresh_stuck_ok": "✅ Обновление цен снова работает.",
+        "steam_failing": "⚠️ Steam отвечает ошибками уже {minutes} мин, цены не обновляются.\nПоследняя ошибка: {error}",
+        "steam_failing_ok": "✅ Steam снова отвечает, цены обновляются.",
+        "backup_failed": "⚠️ Ежедневный бэкап базы не удался: {error}",
+        "backup_failed_ok": "✅ Бэкап базы снова работает.",
+        "restarted": "♻️ Сервис перезапустился после неожиданной остановки.",
+        "job_crashed": "💥 {job} упал и перезапускается: {error}",
+    },
+    "uk": {
+        "refresh_stuck": "⚠️ Ціни не оновлювалися {minutes} хв. Можливо, завис цикл оновлення.",
+        "refresh_stuck_ok": "✅ Оновлення цін знову працює.",
+        "steam_failing": "⚠️ Steam відповідає помилками вже {minutes} хв, ціни не оновлюються.\nОстання помилка: {error}",
+        "steam_failing_ok": "✅ Steam знову відповідає, ціни оновлюються.",
+        "backup_failed": "⚠️ Щоденний бекап бази не вдався: {error}",
+        "backup_failed_ok": "✅ Бекап бази знову працює.",
+        "restarted": "♻️ Сервіс перезапустився після неочікуваної зупинки.",
+        "job_crashed": "💥 {job} впав і перезапускається: {error}",
+    },
+}
+
+
 class BotApiError(Exception):
     pass
 
@@ -76,6 +111,21 @@ class TelegramBot:
 
     def _redact(self, text: str) -> str:
         return text.replace(self.settings.bot_token, "<token>")
+
+    async def notify_admins(self, key: str, values: dict) -> None:
+        """Sends an alert to every admin, in their language, with a button to the app."""
+        for admin in sorted(self.settings.admins):
+            lang = self.store.user_language(admin) if self.store is not None else None
+            template = ADMIN_TEXTS.get((lang or "")[:2].lower(), ADMIN_TEXTS["en"]).get(key)
+            if template is None:
+                continue
+            text = template.format(**{k: str(v)[:300] for k, v in values.items()})
+            try:
+                await self.call("sendMessage", chat_id=admin, text=self._redact(text), reply_markup={
+                    "inline_keyboard": [[{"text": texts(lang)["open"], "web_app": {"url": self.settings.public_url}}]],
+                })
+            except BotApiError as e:  # e.g. the admin never pressed /start
+                log.warning("Could not alert admin %s: %s", admin, e)
 
     async def setup(self) -> None:
         # getUpdates does not work while a webhook is set.

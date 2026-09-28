@@ -95,6 +95,11 @@ class PriceService:
         self._overview = overview_market if kind == "sell" else None
         self._overview_gate = SteamGate()
         self._paused_until: dict[str, float] = {}
+        # For the health monitor.
+        self.last_pass: float | None = None
+        self.last_attempt: float | None = None
+        self.last_success: float | None = None
+        self.last_error: str | None = None
         self.max_age = refresh_minutes * 60
         self.interactive_wait = interactive_wait
         self._clock = clock
@@ -177,6 +182,7 @@ class PriceService:
         stale_before = self._clock() - self.max_age * 0.9
         due = [name for name, checked in self.store.tracked() if checked is None or checked < stale_before]
         if not due:
+            self.last_pass = self._clock()
             return 0
         self.fetcher.start_pass()
         queue = deque(due)
@@ -186,6 +192,7 @@ class PriceService:
         now = self._clock()
         workers = [self._work(queue, *src) for src in sources if self._paused_until.get(src[0], 0) <= now]
         done = sum(await asyncio.gather(*workers))
+        self.last_pass = self._clock()
         log.info("Refreshed %d/%d price(s)", done, len(due))
         return done
 
@@ -197,20 +204,24 @@ class PriceService:
         done = errors = 0
         while queue:
             name = queue.popleft()
+            self.last_attempt = self._clock()
             try:
                 await gate.call(fetch, name, on_result=lambda q, n=name: self._store_quote(n, q))
             except ItemNotFound:
                 # Also what Steam answers under load; keep the last known price.
+                self.last_error = f"{source}: {name} not found"
                 log.warning("%s: not found on the Steam market (%s)", name, source)
                 self.store.mark_checked(name, self._clock())
                 continue
             except (RateLimited, CurrencyMismatch) as e:
+                self._failed(e, source)
                 queue.appendleft(name)  # the other worker may still get it
                 if isinstance(e, RateLimited):
                     self._paused_until[source] = self._clock() + SOURCE_COOLDOWN
                 log.error("Price refresh via %s stopped: %s", source, e)
                 break
             except SteamError as e:
+                self._failed(e, source)
                 log.warning("%s: %s (%s)", name, e, source)
                 self.store.mark_checked(name, self._clock())
                 errors += 1
@@ -220,7 +231,11 @@ class PriceService:
                 continue
             errors = 0
             done += 1
+            self.last_success = self._clock()
         return done
+
+    def _failed(self, error: Exception, source: str) -> None:
+        self.last_error = f"{source}: {error}"
 
     async def run(self) -> None:
         while True:
