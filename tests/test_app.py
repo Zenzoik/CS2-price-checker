@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import json
 import time
 
@@ -6,9 +7,10 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from cs2tracker.app.auth import AuthError, sign_init_data, validate_init_data
-from cs2tracker.app.db import MAX_QTY, QuantityLimit, Store, StoreError
+from cs2tracker.app import db as db_module
+from cs2tracker.app.db import HOLDINGS_DDL, MAX_QTY, SCHEMA_VERSION, QuantityLimit, Store, StoreError
 from cs2tracker.app.prices import PriceService, SteamBusy
-from cs2tracker.app.server import CSP, INVENTORY_LIMITER, VERSION, create_app
+from cs2tracker.app.server import CSP, INVENTORY_LIMITER, VERSION, _liquidity_json, create_app
 from cs2tracker.app.settings import AppSettings, SettingsError, load_app_settings
 from cs2tracker.app.telegram import BotApiError, TelegramBot
 from cs2tracker.app.prices import InventoryService
@@ -43,7 +45,8 @@ class FakeMarket:
         book = self.books.get(hash_name, ItemNotFound(hash_name))
         if isinstance(book, BaseException):
             raise book
-        return Quote(hash_name, "UAH", book[0], book[1], "orderbook")
+        return Quote(hash_name, "UAH", book[0], book[1], "orderbook",
+                     *(book[2:4] if len(book) >= 4 else (None, None)))
 
     def search(self, query, containers_only=True):
         self.calls.append(("search", query, containers_only))
@@ -153,6 +156,201 @@ def test_store_refuses_other_currency(tmp_path):
         Store(tmp_path / "t.db", "USD")
 
 
+def test_price_history_keeps_one_latest_price_per_utc_day_after_restart(tmp_path):
+    path = tmp_path / "t.db"
+    store = Store(path, "UAH")
+    before_midnight = calendar.timegm((2024, 1, 1, 23, 59, 0))
+    store.set_price(CASE, 400, at=before_midnight)
+    store.set_price(CASE, 425, at=before_midnight + 30)
+    store.close()
+
+    store = Store(path, "UAH")
+    store.set_price(CASE, 430, at=before_midnight + 45)
+    store.set_price(CASE, 450, at=before_midnight + 90)
+    store.set_price(CASE, None, at=before_midnight + 120)
+    store.mark_checked(CASE, at=before_midnight + 150)
+    assert [tuple(row) for row in store.conn.execute(
+        "SELECT day, cents FROM price_history WHERE hash_name = ? ORDER BY day", (CASE,)
+    )] == [("2024-01-01", 430), ("2024-01-02", None)]  # the day ended with no price
+    assert store.price(CASE)[0] is None
+
+
+def test_item_changes_require_the_exact_previous_day_and_week(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    today = calendar.timegm((2024, 1, 10, 12, 0, 0))
+    store.add_lot(1, CASE, 1, 100)
+    store.set_price(CASE, 100, at=today - 8 * 86400)
+    store.set_price(CASE, 200, at=today - 86400)
+    store.set_price(CASE, 300, at=today)
+    h = store.holdings(1, now=today)[0]
+    assert h.yesterday_cents == 200
+    assert h.week_ago_cents is None  # do not silently use an eight-day-old quote
+    store.set_price(CASE, 150, at=today - 7 * 86400)
+    assert store.holdings(1, now=today)[0].week_ago_cents == 150
+
+
+def test_liquidity_follows_the_source_of_the_latest_successful_quote(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.set_price(CASE, 230, at=1000, buy_order_cents=200, sell_order_cents=230,
+                    buy_orders=0, sell_listings=12)
+    assert store.liquidity(CASE) == (200, 230, 0, 12)
+    store.mark_checked(CASE, at=1001)
+    assert store.liquidity(CASE) == (200, 230, 0, 12)
+    store.set_price(CASE, 235, at=1002)  # priceoverview has no order-book depth
+    assert store.liquidity(CASE) == (None, None, None, None)
+
+
+def test_portfolio_history_uses_daily_quantities_and_marks_changes(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, CASE, 3, 100)
+    store.add_lot(2, CASE, 20, 100)
+    jan_1 = calendar.timegm((2024, 1, 1, 12, 0, 0))
+    store.set_price(CASE, 115, at=jan_1)
+    store.set_price(CASE, 230, at=jan_1 + 86400)
+    store.conn.executemany(
+        "INSERT INTO holding_history (user_id, hash_name, day, qty, changed) VALUES (?, ?, ?, ?, ?)",
+        [(1, CASE, "2024-01-01", 2, 0), (1, CASE, "2024-01-02", 3, 1)],
+    )
+    store.conn.commit()
+    assert store.portfolio_history(1, now=jan_1 + 86400) == {
+        "points": [
+            {"day": "2024-01-01", "value": 2.0, "changed": False},
+            {"day": "2024-01-02", "value": 6.0, "changed": True},
+        ],
+        # Only the two items held on both days count: +1.00 each, the third is new.
+        "change": 2.0,
+        "change_ratio": 1.0,
+    }
+    # "1 day" is measured from yesterday's close.
+    days = [p["day"] for p in store.portfolio_history(1, days=1, now=jan_1 + 86400)["points"]]
+    assert days == ["2024-01-01", "2024-01-02"]
+    assert store.portfolio_history(3, now=jan_1 + 86400) == {"points": [], "change": None, "change_ratio": None}
+
+
+def test_holding_changes_are_recorded_for_the_chart(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, CASE, 2, 100)
+    store.set_holding(1, CASE, 3, 100)
+    store.delete_holding(1, CASE)
+    row = store.conn.execute(
+        "SELECT qty, changed FROM holding_history WHERE user_id = 1 AND hash_name = ?", (CASE,)
+    ).fetchone()
+    assert tuple(row) == (0, 1)
+
+
+def test_deleted_holding_keeps_earlier_value_in_history(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, CASE, 1, 100)
+    store.delete_holding(1, CASE)
+    jan_1 = calendar.timegm((2024, 1, 1, 12, 0, 0))
+    store.set_price(CASE, 115, at=jan_1)
+    store.conn.executemany(
+        "INSERT INTO holding_history (user_id, hash_name, day, qty, changed) VALUES (1, ?, ?, ?, 1)",
+        [(CASE, "2024-01-01", 1), (CASE, "2024-01-02", 0)],
+    )
+    store.conn.commit()
+    assert [p["value"] for p in store.portfolio_history(1, now=jan_1 + 86400)["points"]] == [1.0, 0.0]
+
+
+DAY = 86400
+JAN_1 = calendar.timegm((2024, 1, 1, 12, 0, 0))
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Pins the store's idea of "now" (quantity changes use the real clock)."""
+    now = [JAN_1]
+    monkeypatch.setattr(db_module.time, "time", lambda: now[0])
+    return now
+
+
+def test_chart_from_real_changes_counts_only_market_moves(tmp_path, clock):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, "A", 10, 100)
+    store.set_price("A", 115, at=clock[0])            # 10 x 1.00 net
+    clock[0] += DAY
+    store.set_price("A", 230, at=clock[0])            # the market doubles A: +10.00
+    store.import_items(1, [("B", 1, None, False)])    # adding B is not a gain
+    store.set_price("B", 1150, at=clock[0])
+    clock[0] += DAY
+    store.delete_holdings(1, ["B"])                   # nor is removing it a loss
+    history = store.portfolio_history(1, now=clock[0])
+    assert history["points"] == [
+        {"day": "2024-01-01", "value": 10.0, "changed": True},
+        {"day": "2024-01-02", "value": 30.0, "changed": True},
+        {"day": "2024-01-03", "value": 20.0, "changed": True},
+    ]
+    assert history["change"] == 10.0
+    assert history["change_ratio"] == pytest.approx(1.0)
+
+
+def test_lost_price_never_rewrites_a_past_day(tmp_path, clock):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, "A", 10, 1000)
+    store.add_lot(1, "B", 1, 100)
+    store.set_price("A", 1150, at=clock[0])
+    store.set_price("B", 115, at=clock[0])
+    clock[0] += DAY
+    store.set_price("A", None, at=clock[0])  # the last buy order disappeared
+    seen_then = store.portfolio_history(1, now=clock[0])
+    assert [p["value"] for p in seen_then["points"]] == [101.0, 1.0]
+    assert seen_then["change"] == 0.0  # losing a price is not a market move
+    clock[0] += DAY  # no successful fetch today
+    seen_later = store.portfolio_history(1, now=clock[0])
+    assert [p["value"] for p in seen_later["points"]] == [101.0, 1.0, 1.0]
+
+
+def test_period_includes_the_day_it_is_measured_from(tmp_path, clock):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, "A", 1, 100)
+    for _ in range(10):
+        store.set_price("A", 115, at=clock[0])
+        clock[0] += DAY
+    points = store.portfolio_history(1, days=7, now=clock[0])["points"]
+    assert len(points) == 8
+    assert points[0]["day"] == "2024-01-04" and points[-1]["day"] == "2024-01-11"
+    assert len(store.portfolio_history(1, days=0, now=clock[0])["points"]) == 11
+
+
+def test_same_day_round_trip_is_not_marked_as_a_change(tmp_path, clock):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, "A", 3, 100)
+    clock[0] += DAY
+    store.set_holding(1, "A", 5, 100)
+    store.set_holding(1, "A", 3, 100)
+    store.add_lot(1, "C", 1, 100)
+    store.delete_holding(1, "C")
+    store.set_holding(1, "A", 3, 200)  # only the price paid: nothing to record
+    assert [p["changed"] for p in store.portfolio_history(1, now=clock[0])["points"]] == [True, False]
+
+
+def test_restart_records_quantities_changed_outside_the_app(tmp_path):
+    path = tmp_path / "t.db"
+    store = Store(path, "UAH")
+    store.add_lot(1, "A", 3, 100)
+    store.add_lot(1, "B", 1, 100)
+    with store.conn:  # e.g. an older release that did not record history
+        store.conn.execute("DELETE FROM holdings WHERE hash_name = 'A'")
+        store.conn.execute("UPDATE holdings SET qty = 4 WHERE hash_name = 'B'")
+    store.close()
+    store = Store(path, "UAH")
+    latest = dict(store.conn.execute(
+        "SELECT hash_name, qty FROM holding_history h WHERE day = "
+        "(SELECT MAX(day) FROM holding_history WHERE hash_name = h.hash_name)").fetchall())
+    assert latest == {"A": 0, "B": 4}
+    before = store.conn.execute("SELECT COUNT(*) FROM holding_history").fetchone()[0]
+    Store(path, "UAH").close()  # nothing left to reconcile
+    assert store.conn.execute("SELECT COUNT(*) FROM holding_history").fetchone()[0] == before
+
+
+def test_liquidity_spread_needs_a_sane_book():
+    assert _liquidity_json(None, None, None, None) is None
+    assert _liquidity_json(100, 100, 1, 1)["spread"] == 0.0
+    assert _liquidity_json(110, 100, 1, 1)["spread"] is None  # crossed book
+    assert _liquidity_json(0, 100, 0, 1)["spread"] is None
+    assert _liquidity_json(None, 100, None, 3) == {"buy_orders": None, "sell_listings": 3, "spread": None}
+
+
 # -- prices ---------------------------------------------------------------------
 
 def test_search_falls_back_to_all_items_and_remembers_icons(tmp_path):
@@ -200,6 +398,21 @@ def test_refresh_marks_unknown_items_and_skips_fresh_ones(tmp_path):
     assert market.calls == []
 
 
+def test_refresh_records_history_without_extra_steam_calls(tmp_path):
+    now = [calendar.timegm((2024, 1, 1, 23, 50, 0))]
+    market = FakeMarket(books={CASE: (4.21, 4.64)})
+    store, prices = make_service(tmp_path, market, clock=lambda: now[0])
+    store.add_lot(1, CASE, 1, 100)
+    assert asyncio.run(prices.refresh()) == 1
+    now[0] += 600
+    market.books[CASE] = (4.21, 5.0)
+    assert asyncio.run(prices.refresh()) == 1
+    assert [tuple(row) for row in store.conn.execute(
+        "SELECT day, cents FROM price_history ORDER BY day"
+    )] == [("2024-01-01", 464), ("2024-01-02", 500)]
+    assert market.calls == [("orderbook", CASE), ("orderbook", CASE)]
+
+
 # -- HTTP API -------------------------------------------------------------------
 
 def run_api(tmp_path, scenario, market=None, **settings_kw):
@@ -240,24 +453,62 @@ def test_api_private_bot(tmp_path):
     run_api(tmp_path, scenario, allowed_users=frozenset({1}))
 
 
+def test_api_history_is_scoped_and_reports_yesterday_change(tmp_path):
+    async def scenario(client, store, market):
+        store.add_lot(42, CASE, 2, 100)
+        yesterday = time.time() - 86400
+        store.set_price(CASE, 100, at=time.time() - 7 * 86400)
+        store.set_price(CASE, 115, at=yesterday)
+        store.set_price(CASE, 230)
+        r = await client.get("/api/portfolio/history?period=7d", headers=auth())
+        assert r.status == 200
+        points = (await r.json())["points"]
+        assert points[-1]["value"] == 4.0
+        assert points[-1]["day"] in utc_days_around_now()
+        item = (await (await client.get("/api/portfolio", headers=auth())).json())["items"][0]
+        assert item["change_24h"] == 1.0
+        assert item["change_7d"] == pytest.approx(1.3)
+        assert (await (await client.get("/api/portfolio/history?period=all", headers=auth(99))).json())["points"] == []
+        assert (await client.get("/api/portfolio/history?period=bad", headers=auth())).status == 400
+        assert (await client.get("/api/portfolio/history")).status == 401
+    run_api(tmp_path, scenario)
+
+
+def test_api_quote_exposes_orderbook_liquidity_without_another_steam_call(tmp_path):
+    async def scenario(client, store, market):
+        q = await (await client.get("/api/quote", params={"hash_name": CASE}, headers=auth())).json()
+        assert q["liquidity"] == {"buy_orders": 8, "sell_listings": 12,
+                                  "spread": pytest.approx(2 * (464 - 421) / (464 + 421))}
+        await client.post("/api/holdings", headers=auth(),
+                          json={"hash_name": CASE, "qty": 1, "buy_price": 3.5, "mode": "add"})
+        item = (await (await client.get("/api/portfolio", headers=auth())).json())["items"][0]
+        assert item["liquidity"] == q["liquidity"]
+        assert [call for call in market.calls if call[0] == "orderbook"] == [("orderbook", CASE)]
+    run_api(tmp_path, scenario, market=FakeMarket(books={CASE: (4.21, 4.64, 8, 12)}))
+
+
 def test_api_add_edit_delete_flow(tmp_path):
     async def scenario(client, store, market):
         r = await client.get("/api/portfolio", headers=auth())
         body = await r.json()
         assert body.pop("version") and body.pop("is_admin") is False
-        assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": []}
+        assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": [],
+                        "watching": [], "can_notify": False, "offer_digest": False}
 
         found = await (await client.get("/api/search", params={"q": "breakout"}, headers=auth())).json()
         assert found["results"] == [{"hash_name": CASE, "name": CASE, "icon": "abc", "held": False}]
 
         q = await (await client.get("/api/quote", params={"hash_name": CASE}, headers=auth())).json()
-        assert q == {"price": 4.64, "holding": None}
+        assert q == {"price": 4.64, "holding": None,
+                     "liquidity": {"buy_orders": None, "sell_listings": None,
+                                   "spread": pytest.approx(2 * (464 - 421) / (464 + 421))}}
 
         r = await client.post("/api/holdings", headers=auth(),
                               json={"hash_name": CASE, "qty": 10, "buy_price": 3.5, "mode": "add"})
         items = (await r.json())["items"]
         assert items[0] | {} == {"hash_name": CASE, "name": CASE, "icon": "abc", "qty": 10,
-                                 "buy_price": 3.5, "price": 4.64, "pending": False}
+                                 "buy_price": 3.5, "price": 4.64, "pending": False, "change_24h": None,
+                                 "change_7d": None, "liquidity": q["liquidity"]}
 
         await client.post("/api/holdings", headers=auth(),
                           json={"hash_name": CASE, "qty": 10, "buy_price": 4.5, "mode": "add"})
@@ -563,6 +814,108 @@ def test_migrates_v1_database(tmp_path):
     assert store.holding(1, "B").buy_cents is None
     store.close()
     Store(path, "UAH").close()  # idempotent
+
+
+V2_SCHEMA = """
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE items (hash_name TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT);
+{holdings}
+CREATE TABLE users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, language TEXT,
+                    first_seen REAL NOT NULL, last_seen REAL NOT NULL, via TEXT NOT NULL);
+CREATE TABLE events (ts REAL NOT NULL, user_id INTEGER NOT NULL, kind TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE prices (hash_name TEXT PRIMARY KEY, cents INTEGER, updated_at REAL, checked_at REAL NOT NULL);
+INSERT INTO meta VALUES ('currency', 'UAH'), ('schema', '2');
+""".format(holdings=HOLDINGS_DDL)
+
+
+def utc_days_around_now():
+    """Today's UTC day, and tomorrow's in case a test runs across midnight."""
+    return {time.strftime("%Y-%m-%d", time.gmtime(time.time() + d)) for d in (0, 60)}
+
+
+def columns(store, table):
+    return {row["name"]: row["notnull"] for row in store.conn.execute(f"PRAGMA table_info({table})")}
+
+
+def test_migrates_a_real_v2_database_to_the_fresh_schema(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(V2_SCHEMA)
+    conn.execute("INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at) VALUES (7, ?, 4, 100, 1)", (CASE,))
+    conn.execute("INSERT INTO prices VALUES (?, 464, 1000, 1000)", (CASE,))
+    conn.commit()
+    conn.close()
+
+    upgraded = Store(path, "UAH")
+    fresh = Store(tmp_path / "fresh.db", "UAH")
+    for table in ("prices", "price_history", "holding_history", "holdings"):
+        assert columns(upgraded, table) == columns(fresh, table), table
+    assert upgraded.price(CASE) == (464, 1000)
+    assert upgraded.conn.execute("SELECT value FROM meta WHERE key = 'schema'").fetchone()[0] == str(SCHEMA_VERSION)
+    row = upgraded.conn.execute("SELECT user_id, qty, changed FROM holding_history").fetchone()
+    assert tuple(row) == (7, 4, 0)  # a baseline, not a change
+    upgraded.set_price(CASE, None, at=calendar.timegm((2024, 1, 2, 0, 0, 0)))
+    assert [tuple(r) for r in upgraded.conn.execute("SELECT day, cents FROM price_history")] == [
+        ("2024-01-02", None)
+    ]
+    upgraded.close()
+    Store(path, "UAH").close()  # idempotent
+
+
+def test_migrates_v5_price_history_to_allow_missing_prices(tmp_path):
+    path = tmp_path / "old.db"
+    store = Store(path, "UAH")
+    with store.conn:
+        store.conn.execute("DROP TABLE price_history")
+        store.conn.execute("CREATE TABLE price_history (hash_name TEXT NOT NULL, day TEXT NOT NULL, "
+                           "cents INTEGER NOT NULL CHECK (cents >= 0), PRIMARY KEY (hash_name, day))")
+        store.conn.execute("INSERT INTO price_history VALUES (?, '2024-01-01', 464)", (CASE,))
+        store.conn.execute("UPDATE meta SET value = '5' WHERE key = 'schema'")
+    store.close()
+    upgraded = Store(path, "UAH")
+    assert columns(upgraded, "price_history")["cents"] == 0
+    upgraded.set_price(CASE, None, at=calendar.timegm((2024, 1, 2, 0, 0, 0)))
+    assert [tuple(r) for r in upgraded.conn.execute("SELECT day, cents FROM price_history ORDER BY day")] == [
+        ("2024-01-01", 464), ("2024-01-02", None)
+    ]
+
+
+def test_migrates_v3_holdings_to_chart_baseline(tmp_path):
+    path = tmp_path / "old.db"
+    store = Store(path, "UAH")
+    store.add_lot(7, CASE, 4, 100)
+    store.conn.execute("DROP TABLE holding_history")
+    store.conn.execute("UPDATE meta SET value = '3' WHERE key = 'schema'")
+    store.conn.commit()
+    store.close()
+
+    upgraded = Store(path, "UAH")
+    row = upgraded.conn.execute("SELECT user_id, hash_name, day, qty, changed FROM holding_history").fetchone()
+    assert tuple(row)[:2] == (7, CASE) and tuple(row)[3:] == (4, 0)
+    assert row["day"] in utc_days_around_now()
+    assert upgraded.portfolio_history(7)["points"][-1]["day"] == row["day"]
+
+
+def test_migrates_v4_prices_without_losing_existing_quotes(tmp_path):
+    path = tmp_path / "old.db"
+    store = Store(path, "UAH")
+    store.set_price(CASE, 464, at=1000)
+    with store.conn:
+        store.conn.execute("ALTER TABLE prices RENAME TO prices_v5")
+        store.conn.execute("CREATE TABLE prices (hash_name TEXT PRIMARY KEY, cents INTEGER, "
+                           "updated_at REAL, checked_at REAL NOT NULL)")
+        store.conn.execute("INSERT INTO prices SELECT hash_name, cents, updated_at, checked_at FROM prices_v5")
+        store.conn.execute("DROP TABLE prices_v5")
+        store.conn.execute("UPDATE meta SET value = '4' WHERE key = 'schema'")
+    store.close()
+    upgraded = Store(path, "UAH")
+    assert upgraded.price(CASE) == (464, 1000)
+    assert upgraded.liquidity(CASE) == (None, None, None, None)
+    assert upgraded.conn.execute("SELECT value FROM meta WHERE key = 'schema'").fetchone()[0] == str(SCHEMA_VERSION)
+    upgraded.set_price(CASE, 500, buy_order_cents=450, sell_order_cents=500,
+                       buy_orders=2, sell_listings=3)
+    assert upgraded.liquidity(CASE) == (450, 500, 2, 3)
 
 
 def test_unknown_price_paid_poisons_the_average_and_market_fills_in(tmp_path):

@@ -38,9 +38,70 @@ main {
 
 /* Summary --------------------------------------------------------------- */
 .hero { text-align: center; padding: 28px 0 24px; }
-.hero-value { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.hero-value { font-size: clamp(30px, 10vw, 40px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .hero-pnl { margin-top: 6px; font-size: 17px; font-weight: 600; }
 .hero-sub { margin-top: 4px; font-size: 14px; }
+
+/* Overview -------------------------------------------------------------- */
+.overview-hero { padding: 26px 4px 12px; }
+.overview-change { margin-top: 7px; font-size: 16px; font-weight: 600; min-height: 22px; }
+.overview-scope { margin-top: 2px; font-size: 13px; font-weight: 400; }
+.overview-hero .hero-sub { margin-top: 8px; }
+.sk-line.change { display: inline-block; width: 140px; height: 16px; }
+.chart-box { margin: 2px -16px 0; transition: opacity 0.2s ease; }
+.chart-box.loading { opacity: 0.45; }
+.chart-plot-area { position: relative; height: 186px; touch-action: pan-y; outline: none; cursor: crosshair; }
+.chart-plot-area:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 8px; }
+.value-chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke;
+  stroke-linejoin: round; stroke-linecap: round; }
+/* HTML dots: they stay round however the SVG is stretched. */
+.chart-dot { position: absolute; width: 7px; height: 7px; border-radius: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; background: var(--hint); box-shadow: 0 0 0 1.5px var(--bg); }
+.chart-dot.focus { width: 11px; height: 11px; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+.chart-dot.static { position: static; display: inline-block; transform: none; margin-right: 6px; vertical-align: 1px; }
+.chart-label { position: absolute; left: 16px; font-size: 11px; line-height: 1; pointer-events: none; }
+.chart-label.top { top: 4px; }
+.chart-label.bottom { bottom: 4px; }
+.chart-axis { display: flex; justify-content: space-between; margin: 4px 16px 0; font-size: 11px; }
+.chart-info { min-height: 20px; margin: 6px 20px 0; font-size: 13px; text-align: center; }
+.chart-legend { margin-top: 4px; font-size: 12px; text-align: center; }
+.chart-empty { height: 219px; display: grid; place-items: center; font-size: 14px; text-align: center; padding: 0 16px; }
+.chart-empty.tappable, p.chart-empty[role="button"] { cursor: pointer; }
+.sk-chart { width: 100%; height: 150px; }
+.chart-ranges { display: flex; justify-content: center; gap: 8px; margin: 14px 0 22px; }
+.chart-ranges button {
+  border: 0; border-radius: 20px; padding: 8px 16px; min-height: 36px; background: transparent;
+  color: var(--hint); font: inherit; font-size: 14px; cursor: pointer;
+}
+.chart-ranges button.active { background: var(--card); color: var(--fg); font-weight: 600; }
+.top-section { background: var(--card); border-radius: var(--radius); padding: 14px 16px 4px; }
+.top-heading { display: flex; justify-content: space-between; font-weight: 600; padding-bottom: 8px; }
+.top-heading .hint { font-size: 13px; font-weight: 400; }
+.top-list { list-style: none; margin: 0; padding: 0; }
+.top-row { display: flex; align-items: center; gap: 12px; min-height: 58px; cursor: pointer; }
+.top-row .thumb { width: 36px; height: 36px; }
+.top-row + .top-row { border-top: 1px solid var(--sep); }
+.top-name { flex: 1; min-width: 0; font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.top-values { flex: none; text-align: right; font-size: 15px; }
+.top-change { font-size: 13px; margin-top: 2px; }
+.view-all { display: block; margin: 6px auto 4px; padding: 10px 16px; min-height: 44px; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.bottom-nav {
+  position: fixed; z-index: 10; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center; background: var(--card);
+  border-top: 1px solid var(--sep);
+  padding: 6px 0 calc(6px + max(var(--safe-bottom), env(safe-area-inset-bottom, 0px)));
+}
+.bottom-nav .tab {
+  width: min(50%, 280px); min-height: 44px; display: grid; gap: 2px; place-items: center;
+  border: 0; background: none; color: var(--hint); font: inherit; font-size: 12px;
+  cursor: pointer; padding: 2px 4px;
+}
+.bottom-nav .tab.active { color: var(--accent); font-weight: 600; }
+.tab-icon { width: 24px; height: 24px; }
+/* The browser stand-in for MainButton sits above the tabs (Telegram draws its own outside the page). */
+body.has-nav .fallback-main { bottom: calc(76px + var(--safe-bottom)); }
+body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px + var(--safe-bottom)); }
 
 /* Lists ----------------------------------------------------------------- */
 .list { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: var(--radius); overflow: hidden; }
@@ -62,9 +123,13 @@ main {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 .row-sub { font-size: 14px; margin-top: 2px; }
-.row-side { text-align: right; flex: none; }
+/* Shrinks before the name does: the name is what tells items apart. */
+.row-side { text-align: right; flex: 0 1 auto; min-width: 0; max-width: 46%; }
 .row-value { font-weight: 600; }
 .row-pnl { font-size: 14px; margin-top: 2px; }
+.row-metrics { display: flex; flex-direction: column; align-items: flex-end; margin-top: 2px; white-space: nowrap; }
+.row-metrics .row-pnl { margin: 0; }
+.row-change { font-size: 13px; }
 .badge { font-size: 13px; color: var(--accent); flex: none; }
 
 .progress { margin: 10px auto 0; max-width: 240px; }
@@ -118,6 +183,9 @@ main {
 .item-name a { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 .item-name .external { color: var(--accent); font-weight: 400; }
 .item-now { font-size: 15px; }
+.item-insights { display: flex; justify-content: center; gap: 12px; margin-top: 6px; font-size: 14px; }
+.item-insights:empty { display: none; }
+.market-depth { margin: 16px 12px 0; color: var(--hint); font-size: 13px; text-align: center; }
 
 .form { background: var(--card); border-radius: var(--radius); overflow: hidden; }
 .field { display: flex; align-items: center; gap: 12px; padding: 0 14px; min-height: 52px; position: relative; }
@@ -223,3 +291,51 @@ main {
 }
 .chart-col.on .chart-bar, .chart-col:hover .chart-bar { opacity: 1; }
 .chart-axis { display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; }
+
+/* Notifications ---------------------------------------------------------- */
+.hero, .overview-hero, .empty-state { position: relative; }
+.hero { padding-left: 44px; padding-right: 44px; }
+.overview-hero { padding-right: 48px; }
+.bell {
+  position: absolute; top: 4px; right: -6px; width: 44px; height: 44px;
+  display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: var(--accent); cursor: pointer;
+}
+.empty-state .bell { top: 4px; }
+.bell svg, .tab-icon { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bell svg { width: 24px; height: 24px; }
+.bell:focus-visible { outline: 2px solid var(--accent); }
+.screen-title { font-size: 24px; font-weight: 700; margin: 12px 14px 4px; }
+.spaced { margin-top: 12px; }
+.form.spaced { margin-top: 10px; }
+.item-head.compact { padding: 8px 0 16px; }
+.item-head.compact .thumb { width: 72px; height: 72px; }
+.item-head.compact .hint { margin-top: 4px; font-size: 15px; }
+.row.sent .row-title, .row.sent .row-sub:not(.hint) { color: var(--hint); }
+.hour-select {
+  -webkit-appearance: none; appearance: none; border: 0; background: none; cursor: pointer;
+  color: var(--accent); font: inherit; font-size: 16px; text-align: right; padding: 8px 0;
+}
+.card.notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.card.notice p { margin: 0; font-size: 14px; }
+.item-alerts .section-title { margin-top: 20px; }
+.item-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.item-actions:empty { display: none; }
+.chip {
+  min-height: 36px; padding: 7px 14px; border: 0; border-radius: 18px; cursor: pointer;
+  background: var(--card); color: var(--accent); font: inherit; font-size: 14px;
+}
+.chip.on { background: var(--accent); color: var(--tg-theme-button-text-color, #fff); }
+.offer { margin: 6px 0 12px; }
+.offer-title { font-weight: 600; }
+.offer p { margin: 4px 0 12px; font-size: 14px; }
+.offer-actions { display: flex; align-items: center; gap: 18px; }
+.offer-yes {
+  border: 0; border-radius: 10px; padding: 10px 18px; min-height: 40px; cursor: pointer;
+  background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff);
+  font: inherit; font-weight: 600;
+}
+.row.compact { min-height: 56px; }
+.row.compact + .row.compact::before { left: 14px; }
+/* In dark themes the card colour is darker than the track: lift the chosen segment. */
+:root[data-scheme="dark"] .segmented button.active { background: rgba(255, 255, 255, 0.16); }

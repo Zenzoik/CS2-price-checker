@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 import aiohttp
 
@@ -127,6 +128,30 @@ class TelegramBot:
             except BotApiError as e:  # e.g. the admin never pressed /start
                 log.warning("Could not alert admin %s: %s", admin, e)
 
+    async def message_user(self, user_id: int, text: str) -> bool:
+        """A message from the bot with an "Open portfolio" button; False if Telegram refused it."""
+        lang = self.store.user_language(user_id) if self.store is not None else None
+        params = {"chat_id": user_id, "text": text[:4000], "reply_markup": {
+            "inline_keyboard": [[{"text": texts(lang)["open"], "web_app": {"url": self.settings.public_url}}]],
+        }}
+        try:
+            try:
+                await self.call("sendMessage", **params)
+            except BotApiError as e:
+                # "Too Many Requests: retry after N": wait once (briefly) and retry.
+                wait = re.search(r"retry after (\d+)", str(e))
+                if not wait or int(wait.group(1)) > 60:
+                    raise
+                await asyncio.sleep(int(wait.group(1)))
+                await self.call("sendMessage", **params)
+        except BotApiError as e:
+            # Blocked, or never pressed Start: the app asks for permission again.
+            log.warning("Could not message user %s: %s", user_id, e)
+            if self.store is not None and "forbidden" in str(e).lower():
+                self.store.set_prefs(user_id, write_access=0)
+            return False
+        return True
+
     async def setup(self) -> None:
         # getUpdates does not work while a webhook is set.
         await self.call("deleteWebhook")
@@ -174,6 +199,7 @@ class TelegramBot:
         if self.store is not None:
             self.store.touch_user(user, "bot")
             self.store.log_event(user["id"], "bot")
+            self.store.set_prefs(user["id"], write_access=1)  # a private chat exists now
         t = texts(user.get("language_code"))
         if not self.settings.allows(user["id"]):
             await self.call("sendMessage", chat_id=chat["id"], text=t["private"])

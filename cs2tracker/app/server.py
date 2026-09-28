@@ -12,13 +12,15 @@ import logging
 import math
 import time
 from collections import defaultdict, deque
+from datetime import datetime
 from pathlib import Path
 
 from aiohttp import web
 
 from ..steam import ItemNotFound, PrivateInventory, ProfileNotFound, RateLimited, SteamError, parse_profile
 from .auth import AuthError, validate_init_data
-from .db import MAX_QTY, QuantityLimit, Store, net_cents
+from .db import DIGESTS, ITEM_METRICS, MAX_QTY, PORTFOLIO_METRICS, QuantityLimit, Store, net_cents
+from .notify import current_value, valid_zone, zone
 from .prices import InventoryService, PriceService, SteamBusy
 from .settings import AppSettings
 
@@ -194,7 +196,18 @@ async def portfolio(request: web.Request) -> web.Response:
         "price_kind": settings.price,
         "updated_at": min(stamps) if stamps else None,
         "items": [_holding_json(h) for h in holdings],
+        "watching": [_watch_json(w) for w in store.watching(request[USER_ID])],
+        "can_notify": bool(store.prefs(request[USER_ID])["write_access"]),
+        "offer_digest": store.offer_digest(request[USER_ID]),
     })
+
+
+async def portfolio_history(request: web.Request) -> web.Response:
+    period = request.query.get("period", "30d")
+    if period not in ("7d", "30d", "all"):
+        raise ApiError(400, "invalid", "Unknown history period")
+    days = {"7d": 7, "30d": 30, "all": 0}[period]
+    return web.json_response(request.app[STORE].portfolio_history(request[USER_ID], days))
 
 
 async def search(request: web.Request) -> web.Response:
@@ -232,6 +245,7 @@ async def quote(request: web.Request) -> web.Response:
     return web.json_response({
         "price": _money(cents),
         "holding": _holding_json(holding) if holding else None,
+        "liquidity": _liquidity_json(*store.liquidity(hash_name)),
     })
 
 
@@ -372,6 +386,114 @@ async def import_items(request: web.Request) -> web.Response:
     return await portfolio(request)
 
 
+async def watch(request: web.Request) -> web.Response:
+    """{"hash_name", "on": true | false}: follow an item's price without owning it."""
+    body = await _json_body(request)
+    hash_name = _hash_name(body.get("hash_name"))
+    store = request.app[STORE]
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    if body.get("on") is True:
+        await _ensure_known(request, hash_name)
+        if not store.watch(request[USER_ID], hash_name):
+            raise ApiError(400, "watch_full", "The watchlist is full")
+        request.app[PRICES].wake()  # its price is wanted soon
+        _event(request, "watch")
+    elif body.get("on") is False:
+        store.unwatch(request[USER_ID], hash_name)
+    else:
+        raise ApiError(400, "invalid", "on must be true or false")
+    return await portfolio(request)
+
+
+async def list_alerts(request: web.Request) -> web.Response:
+    return web.json_response({"alerts": [_alert_json(a) for a in request.app[STORE].alerts(request[USER_ID])]})
+
+
+async def save_alert(request: web.Request) -> web.Response:
+    """Creates ({hash_name | null, metric, above, threshold}) or, with "id", edits an alert."""
+    body = await _json_body(request)
+    user_id = request[USER_ID]
+    store = request.app[STORE]
+    request.app[WRITE_LIMITER].check(user_id)
+    alert_id = None if body.get("id") is None else _alert_id(body.get("id"))
+    hash_name = None if body.get("hash_name") is None else _hash_name(body.get("hash_name"))
+    metric = body.get("metric")
+    above = body.get("above")
+    if metric not in (PORTFOLIO_METRICS if hash_name is None else ITEM_METRICS) or not isinstance(above, bool):
+        raise ApiError(400, "invalid", "Unknown alert type")
+    threshold = _alert_threshold(metric, above, body.get("threshold"))
+    if metric == "profit":
+        holding = store.holding(user_id, hash_name)
+        if holding is None or not holding.buy_cents:
+            raise ApiError(400, "no_buy_price", "Enter the price you paid first")
+    elif hash_name is not None:
+        await _ensure_known(request, hash_name)
+    saved = store.save_alert(user_id, hash_name, metric, above, threshold, alert_id=alert_id)
+    if saved is None:
+        if alert_id is not None:
+            raise ApiError(404, "gone", "This alert no longer exists")
+        raise ApiError(400, "alerts_full", "Too many alerts")
+    if body.get("write_access") is True:
+        store.set_prefs(user_id, write_access=1)
+    if alert_id is None:
+        _event(request, "alert")
+    request.app[PRICES].wake()  # an alert on an item nobody tracked yet needs its price
+    return await list_alerts(request)
+
+
+async def delete_alert(request: web.Request) -> web.Response:
+    body = await _json_body(request)
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    request.app[STORE].delete_alert(request[USER_ID], _alert_id(body.get("id")))
+    return await list_alerts(request)
+
+
+async def get_prefs(request: web.Request) -> web.Response:
+    prefs = request.app[STORE].prefs(request[USER_ID])
+    return web.json_response({"digest": prefs["digest"], "digest_hour": prefs["digest_hour"],
+                              "tz": prefs["tz"], "can_notify": bool(prefs["write_access"])})
+
+
+async def save_prefs(request: web.Request) -> web.Response:
+    """Any of {digest, digest_hour, tz, digest_offered, write_access}."""
+    body = await _json_body(request)
+    user_id = request[USER_ID]
+    store = request.app[STORE]
+    request.app[WRITE_LIMITER].check(user_id)
+    changes: dict = {}
+    if "digest" in body:
+        if body["digest"] not in DIGESTS:
+            raise ApiError(400, "invalid", "digest must be off, daily or weekly")
+        changes["digest"] = body["digest"]
+        changes["digest_offered"] = 1
+    if "digest_hour" in body:
+        hour = body["digest_hour"]
+        if isinstance(hour, bool) or not isinstance(hour, int) or not 0 <= hour <= 23:
+            raise ApiError(400, "invalid", "digest_hour must be 0-23")
+        changes["digest_hour"] = hour
+    if "tz" in body:
+        if not isinstance(body["tz"], str) or not valid_zone(body["tz"]):
+            raise ApiError(400, "invalid", "Unknown time zone")
+        changes["tz"] = body["tz"]
+    for key in ("digest_offered", "write_access"):
+        if key in body:
+            if not isinstance(body[key], bool):
+                raise ApiError(400, "invalid", f"{key} must be true or false")
+            changes[key] = int(body[key])
+    if {"digest", "digest_hour", "tz"} & changes.keys():
+        # A slot that already passed today waits for tomorrow, not "right now".
+        # Never clear it: a digest already sent today must not come twice.
+        prefs = store.prefs(user_id) | changes
+        local = datetime.now(zone(prefs["tz"]))
+        today = local.date().isoformat()
+        if prefs["digest_sent"] != today and local.hour >= prefs["digest_hour"]:
+            changes["digest_sent"] = today
+    store.set_prefs(user_id, **changes)
+    if changes.get("digest") in ("daily", "weekly"):
+        _event(request, "digest")
+    return await get_prefs(request)
+
+
 async def admin_stats(request: web.Request) -> web.Response:
     if request[USER_ID] not in request.app[SETTINGS].admins:
         raise ApiError(403, "forbidden", "Admins only")
@@ -431,14 +553,90 @@ def _qty(value) -> int:
 def _price_cents(value, optional: bool = False) -> int | None:
     if value is None and optional:
         return None
-    if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
-            or not 0 <= value <= MAX_PRICE):
+    value = _number(value)
+    if value is None or not 0 <= value <= MAX_PRICE:
         raise ApiError(400, "invalid", "Enter the price you paid for one item")
     return int(round(value * 100))
 
 
 def _money(cents: int | None) -> float | None:
     return None if cents is None else cents / 100
+
+
+def _liquidity_json(bid: int | None, ask: int | None,
+                    buy_orders: int | None, sell_listings: int | None) -> dict | None:
+    if bid is None and ask is None and buy_orders is None and sell_listings is None:
+        return None
+    spread = (2 * (ask - bid) / (ask + bid)
+              if bid is not None and ask is not None and 0 < bid <= ask else None)
+    return {"buy_orders": buy_orders, "sell_listings": sell_listings, "spread": spread}
+
+
+def _number(value) -> float | None:
+    """A JSON number as a float; None for anything else, including huge integers."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, int):
+        return float(value) if abs(value) <= 10**15 else None
+    return value if math.isfinite(value) else None
+
+
+def _alert_id(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value < 2**63:
+        raise ApiError(400, "invalid", "Unknown alert")
+    return value
+
+
+def _alert_threshold(metric: str, above: bool, raw) -> int:
+    """Validates a threshold from the app (money or a ratio) into cents / basis points.
+
+    Checked after rounding: a value that rounds to zero would fire on no move at all.
+    """
+    value = _number(raw)
+    if value is None:
+        raise ApiError(400, "invalid", "Enter a number")
+    if metric == "price":
+        cents = int(round(value * 100)) if 0 < value <= MAX_PRICE else 0
+        if cents < 1:
+            raise ApiError(400, "invalid", "Enter a price above zero")
+        return cents
+    if metric == "profit":
+        if not -1 < value <= 100:
+            raise ApiError(400, "invalid", "Enter a change from -100 % to +10000 %")
+        return int(round(value * 10000))
+    # Portfolio alerts are a move from now: up means above zero, down below.
+    if metric == "value_pct":
+        if not -1 < value <= 100:
+            raise ApiError(400, "invalid", "Enter a change from -100 % to +10000 %")
+        scaled = int(round(value * 10000))
+    else:
+        if abs(value) > MAX_PRICE:
+            raise ApiError(400, "invalid", "Enter a smaller amount")
+        scaled = int(round(value * 100))
+    if scaled == 0 or (scaled > 0) != above:
+        raise ApiError(400, "invalid", "Enter a move up or down")
+    return scaled
+
+
+def _alert_json(a: dict) -> dict:
+    money_metric = a["metric"] in ("price", "value_amount")
+    scale = (lambda v: None if v is None else v / 100) if money_metric else (lambda v: None if v is None else v / 10000)
+    return {
+        "id": a["id"], "hash_name": a["hash_name"], "name": a["name"], "icon": a["icon"],
+        "metric": a["metric"], "above": bool(a["above"]), "threshold": scale(a["threshold"]),
+        "current": scale(current_value(a)), "armed": bool(a["armed"]),
+        "fired_at": a["fired_at"], "created_at": a["created_at"], "baseline": _money(a["baseline"]),
+        "price": _money(a["price_cents"]),
+    }
+
+
+def _watch_json(w: dict) -> dict:
+    return {
+        "hash_name": w["hash_name"], "name": w["name"], "icon": w["icon"],
+        "price": _money(w["price_cents"]), "pending": w["price_checked"] is None,
+        "change_24h": (w["price_cents"] / w["yesterday_cents"] - 1
+                       if w["price_cents"] is not None and w["yesterday_cents"] else None),
+    }
 
 
 def _holding_json(h) -> dict:
@@ -450,6 +648,12 @@ def _holding_json(h) -> dict:
         "buy_price": _money(h.buy_cents),
         "price": _money(h.price_cents),
         "pending": h.price_checked is None,
+        "change_24h": (h.price_cents / h.yesterday_cents - 1
+                       if h.price_cents is not None and h.yesterday_cents else None),
+        "change_7d": (h.price_cents / h.week_ago_cents - 1
+                      if h.price_cents is not None and h.week_ago_cents else None),
+        "liquidity": _liquidity_json(h.buy_order_cents, h.sell_order_cents,
+                                     h.buy_orders, h.sell_listings),
     }
 
 
@@ -475,6 +679,7 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)
+    app.router.add_get("/api/portfolio/history", portfolio_history)
     app.router.add_get("/api/search", search)
     app.router.add_get("/api/quote", quote)
     app.router.add_post("/api/holdings", save_holding)
@@ -482,4 +687,10 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_get("/api/inventory", inventory)
     app.router.add_post("/api/import", import_items)
     app.router.add_get("/api/admin/stats", admin_stats)
+    app.router.add_post("/api/watch", watch)
+    app.router.add_get("/api/alerts", list_alerts)
+    app.router.add_post("/api/alerts", save_alert)
+    app.router.add_post("/api/alerts/delete", delete_alert)
+    app.router.add_get("/api/prefs", get_prefs)
+    app.router.add_post("/api/prefs", save_prefs)
     return app

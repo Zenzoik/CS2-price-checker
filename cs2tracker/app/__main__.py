@@ -14,8 +14,10 @@ import aiohttp
 from aiohttp import web
 
 from ..steam import SteamMarket
-from .db import Store, StoreError
+from .backup import BackupError, backup_database
+from .db import SCHEMA_VERSION, Store, StoreError, stored_schema
 from .monitor import AdminAlerts, HealthMonitor
+from .notify import Notifier
 from .prices import InventoryService, PriceService
 from .server import create_app
 from .settings import SettingsError, load_app_settings
@@ -40,6 +42,7 @@ async def supervise(name: str, job, alerts: AdminAlerts | None = None) -> None:
 
 async def serve() -> None:
     settings = load_app_settings()
+    backup_before_upgrade(settings)
     store = Store(settings.db_path, settings.currency)
     store.prune_events(time.time() - 180 * 86400)  # keep half a year of usage history
     # A user waits on these calls, so give up quickly instead of CLI-style backoff.
@@ -72,18 +75,36 @@ async def serve() -> None:
             alerts = AdminAlerts(bot.notify_admins)
             monitor = HealthMonitor(prices, alerts, db_path=settings.db_path,
                                     backup_dir=settings.backups, backup_keep=settings.backup_keep)
+            notifier = Notifier(store, bot.message_user, currency=settings.currency)
             if crashed_before:
                 await alerts.event("restarted")
             await asyncio.gather(
                 supervise("Price refresh", prices.run, alerts),
                 supervise("Telegram bot", bot.run, alerts),
                 supervise("Health monitor", monitor.run, alerts),
+                supervise("Notifications", lambda: notifier.run(prices.passed), alerts),
             )
     finally:
         await runner.cleanup()
         store.close()
         if own_marker and _read(marker) == str(os.getpid()):
             marker.unlink(missing_ok=True)
+
+
+def backup_before_upgrade(settings) -> None:
+    """A schema migration only runs with a fresh copy to go back to.
+
+    An older release cannot use an upgraded database, so rolling back a deploy
+    means restoring this copy.
+    """
+    version = stored_schema(settings.db_path)
+    if version is None or version >= SCHEMA_VERSION:
+        return
+    try:
+        path = backup_database(settings.db_path, settings.backups, settings.backup_keep)
+    except BackupError as e:
+        raise StoreError(f"Not upgrading the database schema without a backup: {e}") from e
+    log.info("Upgrading the database from schema v%d to v%d; backup: %s", version, SCHEMA_VERSION, path)
 
 
 def _read(path) -> str | None:

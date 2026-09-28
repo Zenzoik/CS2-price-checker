@@ -7,7 +7,8 @@ import shutil
 import pytest
 
 from cs2tracker.app.backup import BackupError, backup_database, backups, latest_age
-from cs2tracker.app.db import Store
+from cs2tracker.app.__main__ import backup_before_upgrade
+from cs2tracker.app.db import Store, StoreError
 from cs2tracker.app.monitor import AdminAlerts, HealthMonitor
 from cs2tracker.app.settings import AppSettings
 from cs2tracker.app.telegram import TelegramBot
@@ -289,3 +290,28 @@ def test_second_instance_keeps_the_crash_marker(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         asyncio.run(main.serve())
     assert marker.read_text() == "12345"
+
+
+def test_schema_upgrade_starts_only_after_a_backup(tmp_path):
+    store = make_db(tmp_path)
+    with store.conn:
+        store.conn.execute("UPDATE meta SET value = '5' WHERE key = 'schema'")
+    store.close()
+    settings = AppSettings(bot_token="1:x", public_url="https://x", db_path=tmp_path / "live.db")
+    backup_before_upgrade(settings)
+    assert len(backups(tmp_path / "backups")) == 1
+    Store(tmp_path / "live.db", "UAH").close()  # upgrades
+    backup_before_upgrade(settings)  # already current: no second copy
+    assert len(backups(tmp_path / "backups")) == 1
+    backup_before_upgrade(AppSettings(bot_token="1:x", public_url="https://x", db_path=tmp_path / "new.db"))
+
+
+def test_schema_upgrade_refuses_to_start_without_a_backup(tmp_path, monkeypatch):
+    store = make_db(tmp_path)
+    with store.conn:
+        store.conn.execute("UPDATE meta SET value = '5' WHERE key = 'schema'")
+    store.close()
+    (tmp_path / "backups").write_text("not a folder")
+    settings = AppSettings(bot_token="1:x", public_url="https://x", db_path=tmp_path / "live.db")
+    with pytest.raises(StoreError):
+        backup_before_upgrade(settings)

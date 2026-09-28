@@ -107,6 +107,8 @@ class PriceService:
         self._lock = self._gate.lock
         self._searches: dict[str, tuple[float, list[SearchResult]]] = {}
         self._wake = asyncio.Event()
+        # Set after a pass that stored prices: alerts are checked then.
+        self.passed = asyncio.Event()
 
     async def _call(self, fn, *args, **kwargs):
         return await self._gate.call(fn, *args, **kwargs)
@@ -165,7 +167,14 @@ class PriceService:
         return to_cents(result.price(self.fetcher.kind))
 
     def _store_quote(self, hash_name: str, quote) -> None:
-        self.store.set_price(hash_name, to_cents(quote.price(self.fetcher.kind)), self._clock())
+        book = quote.source == "orderbook"
+        self.store.set_price(
+            hash_name, to_cents(quote.price(self.fetcher.kind)), self._clock(),
+            buy_order_cents=to_cents(quote.highest_buy) if book else None,
+            sell_order_cents=to_cents(quote.lowest_sell) if book else None,
+            buy_orders=quote.buy_orders if book else None,
+            sell_listings=quote.sell_listings if book else None,
+        )
 
     # -- background ----------------------------------------------------------
 
@@ -193,6 +202,8 @@ class PriceService:
         workers = [self._work(queue, *src) for src in sources if self._paused_until.get(src[0], 0) <= now]
         done = sum(await asyncio.gather(*workers))
         self.last_pass = self._clock()
+        if done:
+            self.passed.set()
         log.info("Refreshed %d/%d price(s)", done, len(due))
         return done
 
