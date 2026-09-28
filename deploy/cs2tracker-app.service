@@ -1,0 +1,22 @@
+[Unit]
+Description=CS2 portfolio Telegram Mini App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Adjust to where the repo and its virtualenv live.
+WorkingDirectory=/opt/cs2tracker
+ExecStart=/opt/cs2tracker/.venv/bin/python -m cs2tracker.app
+EnvironmentFile=/etc/cs2tracker/app.env
+Environment=CS2BOT_DB=/var/lib/cs2tracker/cs2tracker.db
+DynamicUser=yes
+StateDirectory=cs2tracker
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

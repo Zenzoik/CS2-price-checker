@@ -61,3 +61,8 @@ config.toml
 # Tooling
 .venv/
 .pytest_cache/
+
+# Mini App database
+*.db
+*.db-wal
+*.db-shm

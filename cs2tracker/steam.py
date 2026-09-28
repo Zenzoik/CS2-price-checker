@@ -62,6 +62,8 @@ class SearchResult:
     name: str
     sell_price_usd: float | None
     sell_listings: int
+    # Path for https://community.fastly.steamstatic.com/economy/image/<icon_url>
+    icon_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -159,11 +161,13 @@ class SteamMarket:
             results = []
             for r in (data or {}).get("results") or []:
                 price = r.get("sell_price")
+                icon = (r.get("asset_description") or {}).get("icon_url")
                 results.append(SearchResult(
                     hash_name=r["hash_name"],
                     name=r.get("name") or r["hash_name"],
                     sell_price_usd=int(price) / 100 if price else None,
                     sell_listings=int(r.get("sell_listings") or 0),
+                    icon_url=icon if isinstance(icon, str) and icon else None,
                 ))
             return results
         except (AttributeError, KeyError, TypeError, ValueError) as e:

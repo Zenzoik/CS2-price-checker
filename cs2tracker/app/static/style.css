@@ -1,0 +1,141 @@
+:root {
+  --bg: var(--tg-theme-secondary-bg-color, #f1f1f4);
+  --card: var(--tg-theme-section-bg-color, #ffffff);
+  --fg: var(--tg-theme-text-color, #0f0f10);
+  --hint: var(--tg-theme-hint-color, #8e8e93);
+  --accent: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #2481cc));
+  --sep: var(--tg-theme-section-separator-color, rgba(128, 128, 128, 0.2));
+  /* Profit/loss colours tuned for >= 4.5:1 contrast on the card colour. */
+  --up: #15803d;
+  --down: #c62828;
+  --skeleton: rgba(128, 128, 128, 0.14);
+  --radius: 14px;
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+  color-scheme: light dark;
+}
+:root[data-scheme="dark"] { --up: #4cd07d; --down: var(--tg-theme-destructive-text-color, #ff6b61); }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); }
+body {
+  font: 16px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+main {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(12px + var(--safe-top)) 16px calc(96px + var(--safe-bottom));
+  min-height: 100vh;
+}
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.hint { color: var(--hint); }
+[hidden] { display: none !important; }
+
+/* Summary --------------------------------------------------------------- */
+.hero { text-align: center; padding: 28px 0 24px; }
+.hero-value { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.hero-pnl { margin-top: 6px; font-size: 17px; font-weight: 600; }
+.hero-sub { margin-top: 4px; font-size: 14px; }
+
+/* Lists ----------------------------------------------------------------- */
+.list { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; min-height: 64px; cursor: pointer; position: relative;
+}
+.row + .row::before {
+  content: ""; position: absolute; top: 0; right: 0; left: 70px;
+  border-top: 1px solid var(--sep);
+}
+.row:active { background: var(--skeleton); }
+.thumb { width: 44px; height: 44px; flex: none; object-fit: contain; border-radius: 10px; }
+.thumb.placeholder { background: var(--skeleton); }
+.row-main { flex: 1; min-width: 0; }
+/* Two lines: wear, StatTrak and sticker finish are what tell CS items apart. */
+.row-title {
+  font-weight: 500; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.row-sub { font-size: 14px; margin-top: 2px; }
+.row-side { text-align: right; flex: none; }
+.row-value { font-weight: 600; }
+.row-pnl { font-size: 14px; margin-top: 2px; }
+.badge { font-size: 13px; color: var(--accent); flex: none; }
+
+.foot { text-align: center; font-size: 13px; margin: 16px 0 0; }
+
+/* Empty / message states ------------------------------------------------ */
+.empty-state { text-align: center; padding: 18vh 24px 0; }
+.empty-icon { font-size: 56px; line-height: 1; }
+.empty-title { font-size: 20px; font-weight: 600; margin: 16px 0 6px; }
+.empty-text { color: var(--hint); margin: 0 auto; max-width: 300px; }
+.message { text-align: center; color: var(--hint); padding: 32px 16px; }
+.message.tappable { color: var(--accent); cursor: pointer; }
+
+/* Search ---------------------------------------------------------------- */
+.search {
+  position: sticky; top: 0; z-index: 1;
+  margin: calc(-12px - var(--safe-top)) -16px 12px;
+  padding: calc(12px + var(--safe-top)) 16px 8px; background: var(--bg);
+}
+.search input {
+  width: 100%; border: 0; outline: 0; border-radius: 12px;
+  padding: 11px 14px; font: inherit; font-size: 17px;
+  background: var(--card); color: var(--fg);
+  -webkit-appearance: none; appearance: none;
+}
+.search input::placeholder { color: var(--hint); }
+.search input::-webkit-search-cancel-button { display: none; }
+
+/* Item ------------------------------------------------------------------ */
+.item-head { text-align: center; padding: 16px 0 20px; }
+.item-head .thumb { width: 112px; height: 112px; border-radius: 0; display: block; margin: 0 auto; }
+.item-head .thumb.placeholder { border-radius: 16px; }
+.item-name { font-size: 20px; font-weight: 600; margin: 10px 0 4px; }
+.item-name a { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.item-name .external { color: var(--accent); font-weight: 400; }
+.item-now { font-size: 15px; }
+
+.form { background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.field { display: flex; align-items: center; gap: 12px; padding: 0 14px; min-height: 52px; position: relative; }
+.field + .field::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; border-top: 1px solid var(--sep); }
+.field span { flex: 1; }
+.field input {
+  width: 45%; text-align: right; border: 0; outline: 0; background: transparent;
+  color: var(--fg); font: inherit; font-size: 17px; font-weight: 600; padding: 14px 0;
+  font-variant-numeric: tabular-nums;
+}
+.field input::placeholder { color: var(--hint); font-weight: 400; }
+.field.invalid input { color: var(--down); }
+
+.note { font-size: 14px; color: var(--hint); margin: 10px 14px 0; }
+.summary { display: flex; justify-content: space-between; font-size: 15px; margin: 14px 14px 0; }
+/* "Bought more" on clients without Telegram's SecondaryButton. */
+.secondary-inline {
+  display: block; width: 100%; margin-top: 24px; padding: 14px;
+  background: var(--card); border: 0; border-radius: var(--radius);
+  color: var(--accent); font: inherit; cursor: pointer;
+}
+
+/* Skeleton -------------------------------------------------------------- */
+.sk { background: var(--skeleton); border-radius: 8px; animation: pulse 1.2s ease-in-out infinite; }
+.sk-hero { width: 180px; height: 44px; margin: 0 auto; }
+.sk-line { height: 14px; width: 60%; }
+.sk-line.short { width: 35%; margin-top: 8px; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
+/* Browser fallback for MainButton --------------------------------------- */
+.fallback-main {
+  position: fixed; left: 16px; right: 16px; bottom: calc(16px + var(--safe-bottom));
+  max-width: 528px; margin: 0 auto; padding: 15px; border: 0; border-radius: 12px;
+  background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.fallback-main:disabled { opacity: 0.5; }
+.fallback-main.danger { background: var(--down); }

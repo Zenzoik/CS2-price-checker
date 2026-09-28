@@ -7,6 +7,8 @@
 
 Tracks CS2 (Counter-Strike 2) Steam Community Market prices and keeps the **Now price** column of your Google Sheets portfolio up to date. The sheet's own formulas compute totals and profit/loss.
 
+It can also run as a [Telegram Mini App](#telegram-mini-app), a minimal portfolio tracker right inside Telegram.
+
 ## Features
 
 - 🔍 **Search and add items**: pick the exact item from the market search results. Containers (cases, capsules) are searched first, then all items.
@@ -94,6 +96,22 @@ Fill in **Buy price (B)** and **Quantity (E)** yourself. The tool writes only **
 Exit codes: `0` means OK, `2` means some items failed or Steam was unreachable (see the log), `1` means a setup error (bad arguments, config, key, sheet access), and `130` means stopped with Ctrl+C.
 
 Prices are written by item name, so sorting the sheet while an update runs is safe. If Steam is down, an update stops after 3 failed items in a row instead of waiting on every one.
+
+## Telegram Mini App
+
+Besides the Google Sheet, the tracker can run as a Telegram bot with a Mini App. Everyone who opens it keeps their own portfolio: search the Steam market, enter how many you bought and at what price, and see what the portfolio is worth now and your profit. The app has a single action button, and prices refresh in the background.
+
+**Setup**
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
+2. Point a domain at your server and put an HTTPS reverse proxy in front of the app. Telegram opens Mini Apps only over HTTPS; see [`deploy/nginx.conf`](deploy/nginx.conf) (with certbot) or the two-line [`deploy/Caddyfile`](deploy/Caddyfile).
+3. Install with the app extra: `pip install ".[app]"` (or `pip install -r requirements.txt`).
+4. Copy [`deploy/app.env.example`](deploy/app.env.example) to `/etc/cs2tracker/app.env`. Fill in `CS2BOT_TOKEN` and `CS2BOT_URL`, and optionally `CS2BOT_ALLOWED_USERS` to keep the bot private.
+5. Run it with `python -m cs2tracker.app`, or as a service: [`deploy/cs2tracker-app.service`](deploy/cs2tracker-app.service).
+
+On start the bot sets its menu button to open the app, and it answers any message with an **Open portfolio** button. The app speaks English, Russian and Ukrainian, following the user's Telegram language.
+
+All prices use one currency (`CS2BOT_CURRENCY`, default UAH). The database remembers it and refuses to start with a different one, so prices never get mixed. The [same rules](#how-prices-are-fetched) apply for which currencies and price kinds work from your server's IP.
 
 ## How prices are fetched
 
