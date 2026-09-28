@@ -45,6 +45,10 @@
       becomes: "Will become {qty} at {price} each.",
       removeFull: "Remove from portfolio",
       pricing: "Fetching prices: {n} of {total}",
+      select: "Select",
+      done: "Done",
+      deleteN: "Remove {n}",
+      deleteConfirm: "Remove the selected items ({n}) from the portfolio?",
       stats: "Statistics",
       st_users: "Users",
       st_active7: "Active, 7 days",
@@ -121,6 +125,10 @@
       becomes: "Станет {qty} шт. по {price}.",
       removeFull: "Убрать из портфеля",
       pricing: "Получаем цены: {n} из {total}",
+      select: "Выбрать",
+      done: "Готово",
+      deleteN: "Удалить {n}",
+      deleteConfirm: "Убрать из портфеля выбранные предметы ({n})?",
       stats: "Статистика",
       st_users: "Пользователи",
       st_active7: "Активны за 7 дней",
@@ -197,6 +205,10 @@
       becomes: "Стане {qty} шт. по {price}.",
       removeFull: "Прибрати з портфеля",
       pricing: "Отримуємо ціни: {n} з {total}",
+      select: "Вибрати",
+      done: "Готово",
+      deleteN: "Видалити {n}",
+      deleteConfirm: "Прибрати з портфеля вибрані предмети ({n})?",
       stats: "Статистика",
       st_users: "Користувачі",
       st_active7: "Активні за 7 днів",
@@ -492,6 +504,7 @@
     stale: null, // a later refresh failed: data on screen may be old
     busy: false,
     back: null,
+    selected: null, // Set of hash names while Home is in selection mode
   };
 
   function setPortfolio(p) {
@@ -597,6 +610,18 @@
     }
 
     main.set(t("addItem"), showSearch);
+    if (state.selected) {
+      // Selection mode: back leaves it, the main button removes the selection.
+      const held = new Set(p.items.map((i) => i.hash_name));
+      state.selected = new Set([...state.selected].filter((n) => held.has(n)));
+      if (!p.items.length) state.selected = null;
+    }
+    if (state.selected) {
+      const n = state.selected.size;
+      state.back = exitSelection;
+      setBack(true);
+      main.set(t("deleteN", { n }), removeSelected, { enabled: n > 0, busy: state.busy, danger: true });
+    }
     if (!p.items.length) {
       mount([h("section", { class: "empty-state" },
         h("div", { class: "empty-icon", "aria-hidden": "true" }, "📦"),
@@ -631,11 +656,12 @@
           h("div", { class: "hero-sub hint num" }, t("pricing", { n: p.items.length - pending, total: p.items.length })),
           progressBar((p.items.length - pending) / p.items.length)),
       ),
-      p.items.length > 1 && sortControl(),
+      toolbar(p.items),
       h("ul", { class: "list" }, items.map(homeRow)),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
-      p.is_admin && h("p", { class: "foot" }, h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
+      p.is_admin && !state.selected && h("p", { class: "foot" },
+        h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
     ], { keepScroll });
   }
 
@@ -700,6 +726,51 @@
     return h("div", { class: "sort" }, select, arrow);
   }
 
+  // Above the list: "Select" + sort, or, while selecting, "Select all" + "Done".
+  function toolbar(items) {
+    const link = (text, onclick) => h("button", { type: "button", class: "link-btn", onclick }, text);
+    if (state.selected) {
+      const all = state.selected.size === items.length;
+      return h("div", { class: "toolbar" },
+        link(all ? t("selectNone") : t("selectAll"), () => {
+          state.selected = all ? new Set() : new Set(items.map((i) => i.hash_name));
+          haptic.tap();
+          showHome({ keepScroll: true });
+        }),
+        link(t("done"), exitSelection));
+    }
+    return h("div", { class: "toolbar" },
+      link(t("select"), () => {
+        state.selected = new Set();
+        haptic.tap();
+        showHome({ keepScroll: true });
+      }),
+      items.length > 1 ? sortControl() : h("span", {}));
+  }
+
+  function exitSelection() {
+    if (state.busy) return;
+    state.selected = null;
+    showHome({ keepScroll: true });
+  }
+
+  async function removeSelected() {
+    const names = [...(state.selected || [])];
+    if (state.busy || !names.length || !(await confirmUser(t("deleteConfirm", { n: names.length })))) return;
+    state.busy = true;
+    showHome({ keepScroll: true });
+    try {
+      setPortfolio(await api("/api/holdings/delete", { method: "POST", body: { hash_names: names } }));
+      haptic.ok();
+      state.selected = null;
+    } catch (e) {
+      haptic.fail();
+      alertUser(errorText(e));
+    }
+    state.busy = false;
+    if (state.screen === "home") showHome({ keepScroll: true });
+  }
+
   function progressBar(ratio) {
     const bar = h("div", { class: "bar", role: "progressbar", "aria-valuenow": String(Math.round(ratio * 100)) },
       h("span", {}));
@@ -713,7 +784,10 @@
     const ratio = priced && it.buy_price > 0 ? net(it.price) / it.buy_price - 1 : null;
     const sub = it.buy_price == null ? t("noBuyPrice", { qty: it.qty })
       : t("position", { qty: it.qty, price: money(it.buy_price) });
-    return tappable(h("li", { class: "row" },
+    const selecting = !!state.selected;
+    const on = selecting && state.selected.has(it.hash_name);
+    const row = h("li", { class: `row${selecting ? " pick" : ""}${on ? " selected" : ""}` },
+      selecting && h("span", { class: "check", "aria-hidden": "true" }),
       thumb(it.icon),
       h("div", { class: "row-main" },
         h("div", { class: "row-title" }, it.name),
@@ -723,7 +797,15 @@
         it.pending ? h("div", { class: "sk sk-price", "aria-hidden": "true" }) : h("div", { class: "row-value" }, money(value)),
         ratio != null && h("div", { class: `row-pnl ${trend(ratio)}` }, percent(ratio)),
       ),
-    ), () => { haptic.tap(); showItem(it, "edit"); });
+    );
+    if (!selecting) return tappable(row, () => { haptic.tap(); showItem(it, "edit"); });
+    row.setAttribute("aria-checked", String(on));
+    return tappable(row, () => {
+      if (on) state.selected.delete(it.hash_name);
+      else state.selected.add(it.hash_name);
+      haptic.tap();
+      showHome({ keepScroll: true });
+    });
   }
 
   // -- screen: search ----------------------------------------------------------

@@ -896,3 +896,17 @@ def test_bot_records_its_users(tmp_path):
     stats = store.stats()
     assert stats["users"]["total"] == 1 and stats["users"]["bot_only"] == 1
     assert stats["recent_users"][0]["username"] == "bo"
+
+
+def test_bulk_remove(tmp_path):
+    async def scenario(client, store, market):
+        for name in ("A", "B", "C"):
+            store.add_lot(42, name, 1, 100)
+        store.add_lot(7, "A", 1, 100)
+        r = await client.post("/api/holdings/delete", headers=auth(), json={"hash_names": ["A", "B", "B", "nope"]})
+        assert [i["hash_name"] for i in (await r.json())["items"]] == ["C"]
+        assert store.holding(7, "A") is not None  # other users untouched
+        assert store.stats()["actions_7d"]["remove"] == 2
+        for bad in ({"hash_names": []}, {"hash_names": "A"}, {"hash_names": [""]}, {}):
+            assert (await client.post("/api/holdings/delete", headers=auth(), json=bad)).status == 400
+    run_api(tmp_path, scenario)

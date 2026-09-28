@@ -35,6 +35,7 @@ WRITES_PER_MINUTE = 60
 INVENTORY_LOOKUPS_PER_MINUTE = 3
 INVENTORY_LOOKUPS_PER_USER = (3, 300)  # calls per window (seconds)
 IMPORT_TTL = 1800
+MAX_BULK = 10_000
 MAX_BODY = 256 * 1024
 
 CSP = "; ".join([
@@ -264,10 +265,17 @@ async def save_holding(request: web.Request) -> web.Response:
 
 
 async def delete_holding(request: web.Request) -> web.Response:
+    """Removes one item ({"hash_name"}) or several at once ({"hash_names": [...]})."""
     body = await _json_body(request)
     request.app[WRITE_LIMITER].check(request[USER_ID])
-    if request.app[STORE].delete_holding(request[USER_ID], _hash_name(body.get("hash_name"))):
-        _event(request, "remove")
+    names = body.get("hash_names")
+    if names is None:
+        names = [body.get("hash_name")]
+    if not isinstance(names, list) or not 1 <= len(names) <= MAX_BULK:
+        raise ApiError(400, "invalid", "Choose items to remove")
+    removed = request.app[STORE].delete_holdings(request[USER_ID], list({_hash_name(n) for n in names}))
+    if removed:
+        _event(request, "remove", removed)
     return await portfolio(request)
 
 

@@ -286,6 +286,13 @@ class Store:
             )
         return cur.rowcount > 0
 
+    def delete_holdings(self, user_id: int, hash_names: list[str]) -> int:
+        with self.conn:
+            cur = self.conn.executemany(
+                "DELETE FROM holdings WHERE user_id = ? AND hash_name = ?", [(user_id, n) for n in hash_names]
+            )
+        return cur.rowcount
+
     def delete_holding(self, user_id: int, hash_name: str) -> bool:
         with self.conn:
             cur = self.conn.execute(
