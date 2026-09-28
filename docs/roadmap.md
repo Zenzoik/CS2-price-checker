@@ -113,16 +113,28 @@ These features let the bot bring users back to the app. They depend on 1.1 for "
 
 ## Phase 3: the full life of an investment
 
-### 3.1 Sales and realized profit (M)
+### 3.1 Sales and realized profit (M) — implemented
 - **Why:** removing an item after selling it currently loses that result.
 - **What:** "Sold…" on the item screen asks for quantity and price, reduces the position and records a sale. Home shows realized profit next to unrealized.
 - **Decision:** realized profit uses the average price paid, the same basis as unrealized, so the two can be added.
+- **Built:** a `sales` table (schema v8) keeps each sale with the average price paid at the time; the remaining position keeps its average.
+  - The price asked for is what one item *brought*, after fees, pre-filled with today's price net of Steam's fee. Sales made off Steam have other fees, and the user knows what arrived.
+  - Sales without a known price paid count towards proceeds but not realized profit, and Home says "on N of M" like the unrealized profit does.
+  - The sales list (tap "Realized" on Home) can undo a sale, which puts the items back at the recorded price paid. Undo needs room in the portfolio when the position was closed.
+  - A sale goes through the same quantity-change path as edits: the chart marks the day and portfolio alerts shift their baseline, so a sale never looks like a market move. Closing a position drops its profit alerts.
 
-### 3.2 Inventory auto-sync (M)
+### 3.2 Inventory auto-sync (M) — implemented
 - **What:** after an import, remember the Steam profile. Once a day, re-read the inventory and send one message: "5 new items in your inventory, add them?", with a button that opens the import screen already filled in.
 - **Decisions:**
   - Steam limits inventory requests per IP hard, so sync runs at most once a day per user, spread across the day, within the existing shared limiter.
   - It only offers new items. Items that disappeared are shown as "no longer in inventory, sold?", which links to 3.1. Nothing is removed automatically.
+- **Built:** `inventory_sync` (schema v8) and `cs2tracker/app/sync.py`, a supervised job.
+  - Each import stores the profile and a snapshot of the inventory, so what was there and not imported is never offered later. Importing from the same profile counts as reviewing what was new.
+  - Reads are due 24 h after the last one, which spreads them by when each user imported. The job takes a request from the shared inventory limiter only while one more is left for users, and reads at most one inventory every 30 s.
+  - New: marketable items not in the last snapshot and not held. Gone: fewer of a held item than last time, capped at the quantity held; a recorded sale settles them. Both accumulate until the user imports, sells or dismisses.
+  - The bot writes only when a read finds something new since the last one, to users who allowed it. The app shows a card on Home either way. "Review" opens the import with the new items ticked; a gone item opens the sale screen with its quantity.
+  - Private or missing profiles are retried the next day and the reason is shown under the bell, where the check can be turned off. Steam's 429 pauses the job for 15 minutes.
+  - Profiles imported before v8 weren't stored, so those users start after their next import.
 
 ---
 
