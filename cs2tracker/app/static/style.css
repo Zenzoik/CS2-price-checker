@@ -115,6 +115,11 @@ main {
 
 .note { font-size: 14px; color: var(--hint); margin: 10px 14px 0; }
 .summary { display: flex; justify-content: space-between; font-size: 15px; margin: 14px 14px 0; }
+/* Removing is rare and destructive: plain red text, confirmed by a dialog. */
+.danger-link {
+  display: block; margin: 28px auto 0; padding: 12px 16px; border: 0; background: none;
+  color: var(--down); font: inherit; cursor: pointer;
+}
 /* "Bought more" on clients without Telegram's SecondaryButton. */
 .secondary-inline {
   display: block; width: 100%; margin-top: 24px; padding: 14px;

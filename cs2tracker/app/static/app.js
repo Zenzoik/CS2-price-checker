@@ -43,7 +43,7 @@
       position: "{qty} at {price}",
       has: "You have {qty} at {price} each.",
       becomes: "Will become {qty} at {price} each.",
-      zeroHint: "Set quantity to 0 to remove the item.",
+      removeFull: "Remove from portfolio",
       removeConfirm: "Remove {name} from the portfolio?",
       justNow: "just now", updated: "updated {ago}", unpriced: "{n} without a price",
       kind_sell: "Lowest Steam listing", kind_buy: "Highest Steam buy order",
@@ -88,7 +88,7 @@
       position: "{qty} шт. · по {price}",
       has: "У вас {qty} шт. по {price}.",
       becomes: "Станет {qty} шт. по {price}.",
-      zeroHint: "Чтобы убрать предмет, поставьте количество 0.",
+      removeFull: "Убрать из портфеля",
       removeConfirm: "Убрать {name} из портфеля?",
       justNow: "только что", updated: "обновлено {ago}", unpriced: "без цены: {n}",
       kind_sell: "Мин. цена продажи Steam", kind_buy: "Макс. заявка на покупку Steam",
@@ -133,7 +133,7 @@
       position: "{qty} шт. · по {price}",
       has: "У вас {qty} шт. по {price}.",
       becomes: "Стане {qty} шт. по {price}.",
-      zeroHint: "Щоб прибрати предмет, поставте кількість 0.",
+      removeFull: "Прибрати з портфеля",
       removeConfirm: "Прибрати {name} з портфеля?",
       justNow: "щойно", updated: "оновлено {ago}", unpriced: "без ціни: {n}",
       kind_sell: "Мін. ціна продажу Steam", kind_buy: "Макс. заявка на купівлю Steam",
@@ -925,7 +925,7 @@
 
       // Note: what adding does to the position, or how to remove.
       let noteText = "";
-      if (editing) noteText = t("zeroHint");
+      if (editing) noteText = "";
       else if (held && q && bValid) {
         const total = held.qty + q;
         if (b == null || held.buy_price == null) noteText = t("becomesNoPrice", { qty: total });
@@ -978,6 +978,7 @@
       note,
       summary,
       secondary.inline,
+      editing && h("button", { class: "danger-link", type: "button", onclick: () => remove() }, t("removeFull")),
     ]);
     renderNow();
     refresh();
