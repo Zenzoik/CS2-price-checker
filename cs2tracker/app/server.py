@@ -15,10 +15,10 @@ from pathlib import Path
 
 from aiohttp import web
 
-from ..steam import ItemNotFound, SteamError
+from ..steam import ItemNotFound, PrivateInventory, ProfileNotFound, RateLimited, SteamError, parse_profile
 from .auth import AuthError, validate_init_data
-from .db import MAX_QTY, QuantityLimit, Store
-from .prices import PriceService, SteamBusy
+from .db import MAX_QTY, QuantityLimit, Store, net_cents
+from .prices import InventoryService, PriceService, SteamBusy
 from .settings import AppSettings
 
 log = logging.getLogger(__name__)
@@ -29,6 +29,12 @@ MAX_NAME = 256
 # Steam calls one user may cause per minute (a search counts as 2), and writes.
 STEAM_CALLS_PER_MINUTE = 40
 WRITES_PER_MINUTE = 60
+# Steam allows only a few inventory requests per minute per IP, for all users,
+# so the server as a whole stays under that and no single user can use it all.
+INVENTORY_LOOKUPS_PER_MINUTE = 3
+INVENTORY_LOOKUPS_PER_USER = (3, 300)  # calls per window (seconds)
+IMPORT_TTL = 1800
+MAX_BODY = 256 * 1024
 
 CSP = "; ".join([
     "default-src 'self'",
@@ -46,6 +52,11 @@ STORE = web.AppKey("store", Store)
 PRICES = web.AppKey("prices", PriceService)
 LIMITER = web.AppKey("limiter", object)
 WRITE_LIMITER = web.AppKey("write_limiter", object)
+INVENTORY = web.AppKey("inventory", InventoryService)
+INVENTORY_LIMITER = web.AppKey("inventory_limiter", object)
+USER_INVENTORY_LIMITER = web.AppKey("user_inventory_limiter", object)
+# user id -> (time, steamid, {hash name: qty}) of the last inventory preview
+PREVIEWS = web.AppKey("previews", dict)
 # RequestKey appeared in aiohttp 3.12; a plain string works everywhere.
 USER_ID = web.RequestKey("user_id", int) if hasattr(web, "RequestKey") else "user_id"
 
@@ -60,22 +71,33 @@ class ApiError(web.HTTPException):
 
 
 class RateLimiter:
-    def __init__(self, per_minute: int, clock=time.monotonic):
-        self.per_minute = per_minute
+    """At most `limit` units per `window` seconds per key."""
+
+    def __init__(self, limit: int, window: float = 60, clock=time.monotonic, code: str = "rate"):
+        self.limit = limit
+        self.window = window
         self.clock = clock
+        self.code = code
         self.calls: dict[int, deque[float]] = defaultdict(deque)
 
-    def check(self, user_id: int, cost: int = 1) -> None:
+    def allows(self, key: int, cost: int = 1) -> bool:
         now = self.clock()
-        q = self.calls[user_id]
-        while q and now - q[0] > 60:
+        q = self.calls[key]
+        while q and now - q[0] > self.window:
             q.popleft()
-        if len(q) + cost > self.per_minute:
-            raise ApiError(429, "rate", "Too many requests, wait a minute")
-        q.extend([now] * cost)
-        if len(self.calls) > 10_000:  # forget idle users
-            for uid in [u for u, v in self.calls.items() if not v or now - v[-1] > 60]:
-                del self.calls[uid]
+        return len(q) + cost <= self.limit
+
+    def take(self, key: int, cost: int = 1) -> None:
+        now = self.clock()
+        self.calls[key].extend([now] * cost)
+        if len(self.calls) > 10_000:  # forget idle keys
+            for k in [k for k, v in self.calls.items() if not v or now - v[-1] > self.window]:
+                del self.calls[k]
+
+    def check(self, key: int, cost: int = 1) -> None:
+        if not self.allows(key, cost):
+            raise ApiError(429, self.code, "Too many requests, wait a minute")
+        self.take(key, cost)
 
 
 # -- middlewares ----------------------------------------------------------------
@@ -179,7 +201,7 @@ async def save_holding(request: web.Request) -> web.Response:
     body = await _json_body(request)
     hash_name = _hash_name(body.get("hash_name"))
     qty = _qty(body.get("qty"))
-    buy_cents = _price_cents(body.get("buy_price"))
+    buy_cents = _price_cents(body.get("buy_price"), optional=True)
     mode = body.get("mode")
     user_id = request[USER_ID]
     store = request.app[STORE]
@@ -206,6 +228,95 @@ async def delete_holding(request: web.Request) -> web.Response:
     body = await _json_body(request)
     request.app[WRITE_LIMITER].check(request[USER_ID])
     request.app[STORE].delete_holding(request[USER_ID], _hash_name(body.get("hash_name")))
+    return await portfolio(request)
+
+
+async def inventory(request: web.Request) -> web.Response:
+    profile = parse_profile(request.query.get("profile", "")[:300])
+    if profile is None:
+        raise ApiError(400, "not_profile", "Paste a Steam profile or trade link")
+    user_id = request[USER_ID]
+    limits = [(request.app[INVENTORY_LIMITER], 0),  # shared: the server has one IP
+              (request.app[USER_INVENTORY_LIMITER], user_id),
+              (request.app[LIMITER], user_id)]
+
+    def charge(cost: int) -> None:
+        # Check all first, so a refused request costs nobody anything.
+        for limiter, key in limits:
+            if not limiter.allows(key, cost):
+                raise ApiError(429, limiter.code, "Too many inventory requests, wait a minute")
+        for limiter, key in limits:
+            limiter.take(key, cost)
+
+    try:
+        steamid, items = await request.app[INVENTORY].load(profile, charge)
+    except ProfileNotFound as e:
+        raise ApiError(404, "profile_not_found", "No Steam profile at this link") from e
+    except PrivateInventory as e:
+        raise ApiError(403, "inventory_private", "This inventory is private") from e
+    except RateLimited as e:
+        raise ApiError(429, "steam_rate", "Steam is limiting inventory requests, try later") from e
+    except SteamBusy as e:
+        raise ApiError(503, "busy", "Steam is busy, try again") from e
+    except SteamError as e:
+        log.warning("Inventory %s failed: %s", profile, e)
+        raise ApiError(503, "steam", "Steam is not responding, try again") from e
+
+    store = request.app[STORE]
+    store.remember_items([(i.hash_name, i.name, i.icon_url) for i in items])
+    previews = request.app[PREVIEWS]
+    if len(previews) >= 1000:
+        previews.pop(next(iter(previews)))
+    previews.pop(user_id, None)
+    previews[user_id] = (time.monotonic(), steamid, {i.hash_name: i.qty for i in items})
+    held = {h.hash_name for h in store.holdings(user_id)}
+    return web.json_response({
+        "steamid": steamid,
+        "room": max(0, request.app[SETTINGS].max_items - len(held)),
+        "items": [{"hash_name": i.hash_name, "name": i.name, "icon": i.icon_url, "qty": i.qty,
+                   "container": i.container, "held": i.hash_name in held,
+                   "price": _money((store.price(i.hash_name) or (None,))[0])} for i in items],
+    })
+
+
+async def import_items(request: web.Request) -> web.Response:
+    body = await _json_body(request)
+    user_id = request[USER_ID]
+    request.app[WRITE_LIMITER].check(user_id)
+    preview = request.app[PREVIEWS].get(user_id)
+    if (preview is None or time.monotonic() - preview[0] > IMPORT_TTL
+            or body.get("steamid") != preview[1]):
+        raise ApiError(409, "import_expired", "Open the inventory again")
+    mode = body.get("price_mode")
+    if mode not in ("none", "market", "manual"):
+        raise ApiError(400, "invalid", "price_mode must be none, market or manual")
+    chosen = body.get("items")
+    if not isinstance(chosen, list) or not chosen or len(chosen) > len(preview[2]):
+        raise ApiError(400, "invalid", "Choose items to import")
+
+    store = request.app[STORE]
+    prices = request.app[PRICES]
+    held = {h.hash_name for h in store.holdings(user_id)}
+    rows: dict[str, tuple[str, int, int | None, bool]] = {}
+    for entry in chosen:
+        if not isinstance(entry, dict):
+            raise ApiError(400, "invalid", "Choose items to import")
+        name = _hash_name(entry.get("hash_name"))
+        if name not in preview[2]:
+            raise ApiError(400, "invalid", "Item is not in this inventory")
+        if name in held:
+            continue
+        buy = None
+        if mode == "manual":
+            buy = _price_cents(entry.get("buy_price"), optional=True)
+        elif mode == "market":
+            fresh = prices.fresh_price(name)
+            buy = net_cents(fresh[0]) if fresh and fresh[0] is not None else None
+        rows[name] = (name, preview[2][name], buy, mode == "market")
+    if len(held) + len(rows) > request.app[SETTINGS].max_items:
+        raise ApiError(400, "full", "Portfolio is full")
+    store.import_items(user_id, list(rows.values()))
+    prices.wake()
     return await portfolio(request)
 
 
@@ -259,7 +370,9 @@ def _qty(value) -> int:
     return value
 
 
-def _price_cents(value) -> int:
+def _price_cents(value, optional: bool = False) -> int | None:
+    if value is None and optional:
+        return None
     if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
             or not 0 <= value <= MAX_PRICE):
         raise ApiError(400, "invalid", "Enter the price you paid for one item")
@@ -281,13 +394,18 @@ def _holding_json(h) -> dict:
     }
 
 
-def create_app(settings: AppSettings, store: Store, prices: PriceService) -> web.Application:
-    app = web.Application(middlewares=[security_headers, authenticate], client_max_size=16 * 1024)
+def create_app(settings: AppSettings, store: Store, prices: PriceService,
+               inventories: InventoryService | None = None) -> web.Application:
+    app = web.Application(middlewares=[security_headers, authenticate], client_max_size=MAX_BODY)
     app[SETTINGS] = settings
     app[STORE] = store
     app[PRICES] = prices
     app[LIMITER] = RateLimiter(STEAM_CALLS_PER_MINUTE)
     app[WRITE_LIMITER] = RateLimiter(WRITES_PER_MINUTE)
+    app[INVENTORY] = inventories or InventoryService(prices.market)
+    app[INVENTORY_LIMITER] = RateLimiter(INVENTORY_LOOKUPS_PER_MINUTE, code="inventory_busy")
+    app[USER_INVENTORY_LIMITER] = RateLimiter(*INVENTORY_LOOKUPS_PER_USER)
+    app[PREVIEWS] = {}
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)
@@ -295,4 +413,6 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService) -> web
     app.router.add_get("/api/quote", quote)
     app.router.add_post("/api/holdings", save_holding)
     app.router.add_post("/api/holdings/delete", delete_holding)
+    app.router.add_get("/api/inventory", inventory)
+    app.router.add_post("/api/import", import_items)
     return app

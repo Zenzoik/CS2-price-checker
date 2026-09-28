@@ -8,13 +8,17 @@ from aiohttp.test_utils import TestClient, TestServer
 from cs2tracker.app.auth import AuthError, sign_init_data, validate_init_data
 from cs2tracker.app.db import MAX_QTY, QuantityLimit, Store, StoreError
 from cs2tracker.app.prices import PriceService, SteamBusy
-from cs2tracker.app.server import CSP, create_app
+from cs2tracker.app.server import CSP, INVENTORY_LIMITER, create_app
 from cs2tracker.app.settings import AppSettings, SettingsError, load_app_settings
 from cs2tracker.app.telegram import BotApiError, TelegramBot
-from cs2tracker.steam import ItemNotFound, Quote, RateLimited, SearchResult, SteamError
+from cs2tracker.app.prices import InventoryService
+from cs2tracker.steam import (
+    InventoryItem, ItemNotFound, PrivateInventory, Quote, RateLimited, SearchResult, SteamError,
+)
 
 TOKEN = "123456:TEST-token"
 CASE = "Operation Breakout Weapon Case"
+STEAMID = "76561198004532679"
 
 
 def init_data(user_id=42, auth_date=None, token=TOKEN, lang="en"):
@@ -44,6 +48,18 @@ class FakeMarket:
     def search(self, query, containers_only=True):
         self.calls.append(("search", query, containers_only))
         return list(self.containers if containers_only else self.everything)
+
+    inventory_items = []
+
+    def inventory(self, steamid):
+        self.calls.append(("inventory", steamid))
+        if isinstance(self.inventory_items, BaseException):
+            raise self.inventory_items
+        return list(self.inventory_items)
+
+    def resolve_vanity(self, name):
+        self.calls.append(("vanity", name))
+        return STEAMID
 
 
 def result(name, icon="abc"):
@@ -517,3 +533,210 @@ def test_result_is_stored_before_the_lock_is_released(tmp_path):
     prices._lock.release = release
     asyncio.run(prices.quote(CASE))
     assert seen[0] is not None and seen[0][0] == 200
+
+
+# -- inventory import -------------------------------------------------------------
+
+def inv_item(name, qty=1, container=True):
+    return InventoryItem(hash_name=name, name=name, icon_url="ic", qty=qty, container=container)
+
+
+def test_migrates_v1_database(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta VALUES ('currency', 'UAH');
+        CREATE TABLE holdings (user_id INTEGER NOT NULL, hash_name TEXT NOT NULL,
+            qty INTEGER NOT NULL CHECK (qty > 0), buy_cents INTEGER NOT NULL CHECK (buy_cents >= 0),
+            added_at REAL NOT NULL, PRIMARY KEY (user_id, hash_name));
+        INSERT INTO holdings VALUES (1, 'A', 2, 300, 1.0);
+    """)
+    conn.commit()
+    conn.close()
+    store = Store(path, "UAH")
+    assert store.holding(1, "A").buy_cents == 300
+    store.add_lot(1, "B", 1, None)  # NULL is allowed now
+    assert store.holding(1, "B").buy_cents is None
+    store.close()
+    Store(path, "UAH").close()  # idempotent
+
+
+def test_unknown_price_paid_poisons_the_average_and_market_fills_in(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.add_lot(1, "A", 2, 100)
+    store.add_lot(1, "A", 1, None)
+    assert (store.holding(1, "A").qty, store.holding(1, "A").buy_cents) == (3, None)
+    assert store.import_items(1, [("B", 4, None, True), ("A", 9, None, False)]) == 1  # A already held
+    assert store.holding(1, "B").buy_cents is None
+    store.set_price("B", 1150)
+    assert store.holding(1, "B").buy_cents == 1000  # net of the 15% fee: profit starts at zero
+    store.set_price("B", 999)  # only the first price becomes the price paid
+    assert store.holding(1, "B").buy_cents == 1000
+
+
+def run_import(tmp_path, scenario, items, **kw):
+    market = FakeMarket(books={CASE: (4.21, 4.64)}, containers=[result(CASE)])
+    market.inventory_items = items
+    run_api(tmp_path, scenario, market=market, **kw)
+
+
+def test_inventory_preview_and_import_modes(tmp_path):
+    async def scenario(client, store, market):
+        store.add_lot(42, "Held Case", 1, 100)
+        r = await client.get("/api/inventory", params={"profile": f"https://steamcommunity.com/profiles/{STEAMID}"},
+                             headers=auth())
+        data = await r.json()
+        assert r.status == 200 and data["steamid"] == STEAMID and data["room"] == 199
+        assert data["items"][0]["price"] is None
+        assert [(i["hash_name"], i["qty"], i["held"]) for i in data["items"]] == [
+            (CASE, 3, False), ("Held Case", 2, True), ("Skin", 1, False), ("Cheap", 5, False)]
+        assert store.item("Skin") == ("Skin", "ic")
+
+        store.set_price("Skin", 5750)
+        r = await client.post("/api/import", headers=auth(), json={
+            "steamid": STEAMID, "price_mode": "market",
+            "items": [{"hash_name": "Skin"}, {"hash_name": CASE}, {"hash_name": "Held Case"}]})
+        got = {i["hash_name"]: i for i in (await r.json())["items"]}
+        assert got["Skin"]["buy_price"] == 50.0 and got["Skin"]["qty"] == 1  # 57.50 net of fee
+        assert got[CASE]["buy_price"] is None and got[CASE]["qty"] == 3  # filled on first price
+        assert got["Held Case"]["qty"] == 1  # untouched
+
+        r = await client.post("/api/import", headers=auth(), json={
+            "steamid": STEAMID, "price_mode": "manual", "items": [{"hash_name": "Cheap", "buy_price": 0.5}]})
+        got = {i["hash_name"]: i for i in (await r.json())["items"]}
+        assert got["Cheap"]["buy_price"] == 0.5 and got["Cheap"]["qty"] == 5
+    run_import(tmp_path, scenario, [inv_item(CASE, 3), inv_item("Held Case", 2),
+                                    inv_item("Skin", container=False), inv_item("Cheap", 5, container=False)])
+
+
+def test_import_only_accepts_the_previewed_inventory(tmp_path):
+    async def scenario(client, store, market):
+        r = await client.post("/api/import", headers=auth(), json={
+            "steamid": STEAMID, "price_mode": "none", "items": [{"hash_name": CASE}]})
+        assert r.status == 409 and (await r.json())["error"] == "import_expired"
+        await client.get("/api/inventory", params={"profile": STEAMID}, headers=auth())
+        for body in [
+            {"steamid": "76561190000000000", "price_mode": "none", "items": [{"hash_name": CASE}]},
+        ]:
+            assert (await client.post("/api/import", headers=auth(), json=body)).status == 409
+        r = await client.post("/api/import", headers=auth(), json={
+            "steamid": STEAMID, "price_mode": "none", "items": [{"hash_name": "Not In Inventory"}]})
+        assert r.status == 400
+        r = await client.post("/api/import", headers=auth(), json={
+            "steamid": STEAMID, "price_mode": "manual", "items": [{"hash_name": CASE, "buy_price": -1}]})
+        assert r.status == 400
+        # Another user cannot use this preview.
+        r = await client.post("/api/import", headers=auth(7), json={
+            "steamid": STEAMID, "price_mode": "none", "items": [{"hash_name": CASE}]})
+        assert r.status == 409
+        assert store.holdings(42) == []
+    run_import(tmp_path, scenario, [inv_item(CASE, 3)])
+
+
+def test_import_respects_portfolio_room(tmp_path):
+    async def scenario(client, store, market):
+        store.add_lot(42, "X", 1, 1)
+        data = await (await client.get("/api/inventory", params={"profile": STEAMID}, headers=auth())).json()
+        assert data["room"] == 1
+        r = await client.post("/api/import", headers=auth(), json={
+            "steamid": STEAMID, "price_mode": "none", "items": [{"hash_name": "A"}, {"hash_name": "B"}]})
+        assert r.status == 400 and (await r.json())["error"] == "full"
+    run_import(tmp_path, scenario, [inv_item("A"), inv_item("B")], max_items=2)
+
+
+@pytest.mark.parametrize("error, status, code", [
+    (PrivateInventory(STEAMID), 403, "inventory_private"),
+    (RateLimited("429"), 429, "steam_rate"),
+    (SteamError("down"), 503, "steam"),
+])
+def test_inventory_errors_map_to_codes(tmp_path, error, status, code):
+    async def scenario(client, store, market):
+        r = await client.get("/api/inventory", params={"profile": STEAMID}, headers=auth())
+        assert r.status == status and (await r.json())["error"] == code
+    run_import(tmp_path, scenario, error)
+
+
+def test_inventory_rejects_non_links_and_caches(tmp_path):
+    async def scenario(client, store, market):
+        r = await client.get("/api/inventory", params={"profile": "breakout case"}, headers=auth())
+        assert r.status == 400 and (await r.json())["error"] == "not_profile"
+        for _ in range(3):
+            r = await client.get("/api/inventory", params={"profile": "https://steamcommunity.com/id/gaben"},
+                                 headers=auth())
+            assert r.status == 200
+        assert [c[0] for c in market.calls] == ["vanity", "inventory"]
+    run_import(tmp_path, scenario, [inv_item(CASE)])
+
+
+def test_inventory_lookups_are_capped_for_the_whole_server(tmp_path):
+    async def scenario(client, store, market):
+        codes = []
+        for i in range(5):  # different users and profiles: only the shared cap applies
+            sid = str(76561198000000000 + i)
+            r = await client.get("/api/inventory", params={"profile": sid}, headers=auth(100 + i))
+            codes.append(r.status if r.status == 200 else (await r.json())["error"])
+        assert codes == [200, 200, 200, "inventory_busy", "inventory_busy"]
+        # A refused request did not use up the user's own allowance.
+        assert market.calls.count(("inventory", str(76561198000000000 + 3))) == 0
+    run_import(tmp_path, scenario, [inv_item(CASE)])
+
+
+def test_holdings_accept_unknown_price_paid(tmp_path):
+    async def scenario(client, store, market):
+        r = await client.post("/api/holdings", headers=auth(),
+                              json={"hash_name": CASE, "qty": 2, "buy_price": None, "mode": "add"})
+        assert (await r.json())["items"][0]["buy_price"] is None
+        r = await client.post("/api/holdings", headers=auth(),
+                              json={"hash_name": CASE, "qty": 2, "buy_price": 3, "mode": "set"})
+        assert (await r.json())["items"][0]["buy_price"] == 3
+    run_api(tmp_path, scenario)
+
+
+def test_one_user_cannot_drain_inventory_lookups(tmp_path):
+    async def scenario(client, store, market):
+        shared = client.server.app[INVENTORY_LIMITER]
+        shared.limit = 100  # isolate the per-user limit
+        codes = []
+        for i in range(4):
+            r = await client.get("/api/inventory", params={"profile": str(76561198000000000 + i)}, headers=auth())
+            codes.append(r.status if r.status == 200 else (await r.json())["error"])
+        assert codes == [200, 200, 200, "rate"]
+        assert len(market.calls) == 3
+        # The refused call did not use shared capacity, and others still get through.
+        assert len(shared.calls[0]) == 3
+        r = await client.get("/api/inventory", params={"profile": STEAMID}, headers=auth(7))
+        assert r.status == 200
+    run_import(tmp_path, scenario, [inv_item(CASE)])
+
+
+def test_private_profiles_are_cached_briefly(tmp_path):
+    async def scenario(client, store, market):
+        for _ in range(3):
+            r = await client.get("/api/inventory", params={"profile": STEAMID}, headers=auth())
+            assert (await r.json())["error"] == "inventory_private"
+        assert market.calls == [("inventory", STEAMID)]
+    run_import(tmp_path, scenario, PrivateInventory(STEAMID))
+
+
+def test_wake_during_a_pass_is_not_lost(tmp_path):
+    market = SlowMarket(0.2, books={"A": (1, 2)})
+    store, prices = make_service(tmp_path, market)
+    store.add_lot(1, "A", 1, 100)
+    passes = []
+    real = prices.refresh
+
+    async def counting():
+        passes.append(1)
+        return await real()
+    prices.refresh = counting
+
+    async def main():
+        task = asyncio.ensure_future(prices.run())
+        await asyncio.sleep(0.05)
+        prices.wake()  # arrives while the first pass is still fetching
+        await asyncio.sleep(0.4)
+        task.cancel()
+    asyncio.run(main())
+    assert len(passes) >= 2

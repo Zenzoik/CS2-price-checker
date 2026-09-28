@@ -13,7 +13,7 @@ from aiohttp import web
 
 from ..steam import SteamMarket
 from .db import Store, StoreError
-from .prices import PriceService
+from .prices import InventoryService, PriceService
 from .server import create_app
 from .settings import SettingsError, load_app_settings
 from .telegram import TelegramBot
@@ -41,7 +41,10 @@ async def serve() -> None:
                          backoff=5.0, max_backoff=20.0, timeout=10.0)
     prices = PriceService(store, market, currency=settings.currency, kind=settings.price,
                           refresh_minutes=settings.refresh_minutes)
-    runner = web.AppRunner(create_app(settings, store, prices), access_log=None)
+    # Inventories get their own client: separate throttle, lock and Steam limits.
+    inventories = InventoryService(SteamMarket(request_delay=settings.request_delay, max_retries=0,
+                                               server_retries=0, timeout=15.0))
+    runner = web.AppRunner(create_app(settings, store, prices, inventories), access_log=None)
     await runner.setup()
     try:
         await web.TCPSite(runner, settings.host, settings.port).start()

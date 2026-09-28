@@ -139,3 +139,38 @@ main {
 }
 .fallback-main:disabled { opacity: 0.5; }
 .fallback-main.danger { background: var(--down); }
+
+/* Inventory import ------------------------------------------------------ */
+.segmented {
+  display: flex; gap: 2px; padding: 2px; border-radius: 10px;
+  background: var(--skeleton);
+}
+.segmented button {
+  flex: 1; border: 0; border-radius: 8px; padding: 8px 4px; background: transparent;
+  color: var(--fg); font: inherit; font-size: 14px; cursor: pointer;
+}
+.segmented button.active { background: var(--card); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.import-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin: 16px 14px 8px; }
+.link-btn { border: 0; background: none; padding: 4px 0; color: var(--accent); font: inherit; cursor: pointer; }
+.row.pick { padding-left: 12px; }
+.row.pick + .row.pick::before { left: 98px; }
+.check {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--hint); position: relative;
+}
+.row.selected .check { border-color: var(--accent); background: var(--accent); }
+.row.selected .check::after {
+  content: ""; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.row.disabled { opacity: 0.55; cursor: default; }
+.row.disabled .check { visibility: hidden; }
+.pick-side { flex: none; }
+.hero-pnl .scope { font-weight: 400; font-size: 14px; }
+.price-input {
+  flex: none; width: 88px; border: 0; border-radius: 8px; padding: 8px 10px; text-align: right;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 16px;
+}
+.price-input::placeholder { color: var(--hint); font-size: 14px; }
+.price-input.invalid { color: var(--down); }
+.note.down { color: var(--down); }

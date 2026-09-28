@@ -11,6 +11,19 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+HOLDINGS_DDL = """
+CREATE TABLE IF NOT EXISTS holdings (
+    user_id       INTEGER NOT NULL,
+    hash_name     TEXT NOT NULL,
+    qty           INTEGER NOT NULL CHECK (qty > 0),
+    buy_cents     INTEGER CHECK (buy_cents >= 0),  -- NULL: price paid unknown
+    added_at      REAL NOT NULL,
+    -- 1: take the first market price we get as the price paid (imports)
+    buy_at_market INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, hash_name)
+);
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS items (
@@ -18,21 +31,25 @@ CREATE TABLE IF NOT EXISTS items (
     name      TEXT NOT NULL,
     icon      TEXT
 );
-CREATE TABLE IF NOT EXISTS holdings (
-    user_id    INTEGER NOT NULL,
-    hash_name  TEXT NOT NULL,
-    qty        INTEGER NOT NULL CHECK (qty > 0),
-    buy_cents  INTEGER NOT NULL CHECK (buy_cents >= 0),
-    added_at   REAL NOT NULL,
-    PRIMARY KEY (user_id, hash_name)
-);
+{holdings}
 CREATE TABLE IF NOT EXISTS prices (
     hash_name  TEXT PRIMARY KEY,
     cents      INTEGER,          -- NULL: no listings / buy orders, or never fetched
     updated_at REAL,             -- when `cents` was fetched
     checked_at REAL NOT NULL     -- last attempt, successful or not
 );
-"""
+""".format(holdings=HOLDINGS_DDL)
+
+
+SCHEMA_VERSION = 2
+
+# A CS2 seller gets the buyer's price minus 5% Steam + 10% game fee.
+STEAM_FEE_PERCENT = 15
+
+
+def net_cents(cents: int) -> int:
+    """What selling at `cents` actually brings."""
+    return cents * 100 // (100 + STEAM_FEE_PERCENT)
 
 
 # Keeps qty * buy_cents far below SQLite's int64 limit (1e6 * 1e10 = 1e16).
@@ -53,7 +70,7 @@ class Holding:
     name: str
     icon: str | None
     qty: int
-    buy_cents: int
+    buy_cents: int | None
     price_cents: int | None
     price_updated: float | None
 
@@ -68,12 +85,32 @@ class Store:
         if row is None:
             with self.conn:
                 self.conn.execute("INSERT INTO meta VALUES ('currency', ?)", (currency,))
+                self.conn.execute("INSERT INTO meta VALUES ('schema', ?)", (str(SCHEMA_VERSION),))
         elif row["value"] != currency:
             raise StoreError(
                 f"{path} holds prices in {row['value']}, but the configured currency is "
                 f"{currency}. Use a new database file or set CS2BOT_CURRENCY={row['value']}."
             )
+        else:
+            self._migrate()
         self.currency = currency
+
+    def _migrate(self) -> None:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = 'schema'").fetchone()
+        version = int(row["value"]) if row else 1
+        if version < 2:
+            # v1 required a price paid; SQLite cannot drop NOT NULL in place.
+            # One transaction (no executescript: it would commit halfway).
+            with self.conn:
+                self.conn.execute("BEGIN")  # sqlite3 would otherwise autocommit the DDL
+                self.conn.execute("ALTER TABLE holdings RENAME TO holdings_v1")
+                self.conn.execute(HOLDINGS_DDL)
+                self.conn.execute(
+                    "INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at) "
+                    "SELECT user_id, hash_name, qty, buy_cents, added_at FROM holdings_v1"
+                )
+                self.conn.execute("DROP TABLE holdings_v1")
+                self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', ?)", (str(SCHEMA_VERSION),))
 
     def close(self) -> None:
         self.conn.close()
@@ -114,25 +151,41 @@ class Store:
     def count(self, user_id: int) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM holdings WHERE user_id = ?", (user_id,)).fetchone()[0]
 
-    def add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int) -> None:
-        """Adds a purchase; an existing position gets the weighted average price."""
+    def add_lot(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None) -> None:
+        """Adds a purchase; an existing position gets the weighted average price.
+
+        If either side's price is unknown the average is unknown too (NULL).
+        """
         with self.conn:
             cur = self.conn.execute(
-                """INSERT INTO holdings VALUES (?, ?, ?, ?, ?)
+                """INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at) VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(user_id, hash_name) DO UPDATE SET
                      buy_cents = (qty * buy_cents + excluded.qty * excluded.buy_cents
                                   + (qty + excluded.qty) / 2) / (qty + excluded.qty),
-                     qty = qty + excluded.qty
+                     qty = qty + excluded.qty,
+                     buy_at_market = 0
                    WHERE qty + excluded.qty <= ?""",
                 (user_id, hash_name, qty, buy_cents, time.time(), MAX_QTY),
             )
         if cur.rowcount == 0:
             raise QuantityLimit(f"at most {MAX_QTY} of one item")
 
-    def set_holding(self, user_id: int, hash_name: str, qty: int, buy_cents: int) -> bool:
+    def import_items(self, user_id: int, rows: list[tuple[str, int, int | None, bool]]) -> int:
+        """(hash name, qty, buy cents or None, take first market price); held items are skipped."""
+        now = time.time()
+        with self.conn:
+            cur = self.conn.executemany(
+                "INSERT OR IGNORE INTO holdings (user_id, hash_name, qty, buy_cents, added_at, buy_at_market) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [(user_id, name, min(qty, MAX_QTY), buy, now, int(at_market and buy is None))
+                 for name, qty, buy, at_market in rows],
+            )
+        return cur.rowcount
+
+    def set_holding(self, user_id: int, hash_name: str, qty: int, buy_cents: int | None) -> bool:
         with self.conn:
             cur = self.conn.execute(
-                "UPDATE holdings SET qty = ?, buy_cents = ? WHERE user_id = ? AND hash_name = ?",
+                "UPDATE holdings SET qty = ?, buy_cents = ?, buy_at_market = 0 WHERE user_id = ? AND hash_name = ?",
                 (qty, buy_cents, user_id, hash_name),
             )
         return cur.rowcount > 0
@@ -169,6 +222,13 @@ class Store:
                 "cents = excluded.cents, updated_at = excluded.updated_at, checked_at = excluded.checked_at",
                 (hash_name, cents, at, at),
             )
+            if cents is not None:
+                # Imports that asked for "today's price" as the price paid: net of the
+                # fee, so their profit starts at zero, like the values it is compared to.
+                self.conn.execute(
+                    "UPDATE holdings SET buy_cents = ?, buy_at_market = 0 WHERE hash_name = ? AND buy_at_market = 1",
+                    (net_cents(cents), hash_name),
+                )
 
     def mark_checked(self, hash_name: str, at: float | None = None) -> None:
         """Records a failed attempt without touching the last known price."""

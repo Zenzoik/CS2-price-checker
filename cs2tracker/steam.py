@@ -7,6 +7,8 @@ Endpoints used:
   integer prices, but always in the currency Steam picks from the caller's IP.
 * ``/market/priceoverview``  – lowest listing / median price in an explicit currency.
   Heavily rate limited and returns locale-formatted strings.
+* ``/inventory/<steamid>/730/2`` – a public CS2 inventory (403 when it is private).
+* ``/id/<name>/?xml=1``        – resolves a custom profile URL to a SteamID64.
 
 The old ``Market_LoadOrderSpread`` / ``item_nameid`` scraping stopped working when
 Steam moved listing pages to server-side rendering (2026).
@@ -25,7 +27,8 @@ import requests
 
 log = logging.getLogger(__name__)
 
-MARKET_URL = "https://steamcommunity.com/market"
+COMMUNITY_URL = "https://steamcommunity.com"
+MARKET_URL = f"{COMMUNITY_URL}/market"
 CS2_APPID = 730
 # Steam's "Container" type: cases, capsules, souvenir packages, etc.
 CONTAINER_TAG = "tag_CSGO_Type_WeaponCase"
@@ -56,6 +59,53 @@ class RateLimited(SteamError):
     """Steam kept answering 429 after all retries."""
 
 
+class SteamHTTPError(SteamError):
+    """A 4xx answer other than 429."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+class ProfileNotFound(SteamError):
+    """No Steam profile behind this link or name."""
+
+
+class PrivateInventory(SteamError):
+    """The profile's inventory is not public."""
+
+
+# SteamID64 = this base + the 32-bit account id (as in trade offer links).
+STEAMID64_BASE = 76561197960265728
+_STEAMID_RE = re.compile(r"^7656119\d{10}$")
+_VANITY_RE = re.compile(r"^[A-Za-z0-9_-]{2,64}$")
+
+
+def parse_profile(text: str) -> tuple[str, str] | None:
+    """Recognises a Steam profile reference in user input.
+
+    Returns ("steamid", "7656…") or ("vanity", "name"), or None when the text is
+    not a profile link (so it can be treated as a search query instead). Accepts
+    profile and inventory URLs (/profiles/<id>, /id/<name>), trade offer links
+    (?partner=<account id>) and a bare SteamID64.
+    """
+    s = text.strip()
+    if _STEAMID_RE.match(s):
+        return ("steamid", s)
+    m = re.search(r"steamcommunity\.com/(profiles|id)/([^/?#\s]+)", s, re.I)
+    if m:
+        kind, value = m.group(1).lower(), m.group(2)
+        if kind == "profiles" and _STEAMID_RE.match(value):
+            return ("steamid", value)
+        if kind == "id" and _VANITY_RE.match(value):
+            return ("vanity", value)
+        return None
+    m = re.search(r"steamcommunity\.com/tradeoffer/new/?\?(?:[^#\s]*&)?partner=(\d{1,10})\b", s, re.I)
+    if m and 0 < int(m.group(1)) < 2**32:
+        return ("steamid", str(STEAMID64_BASE + int(m.group(1))))
+    return None
+
+
 @dataclass(frozen=True)
 class SearchResult:
     hash_name: str
@@ -64,6 +114,15 @@ class SearchResult:
     sell_listings: int
     # Path for https://community.fastly.steamstatic.com/economy/image/<icon_url>
     icon_url: str | None = None
+
+
+@dataclass(frozen=True)
+class InventoryItem:
+    hash_name: str
+    name: str
+    icon_url: str | None
+    qty: int
+    container: bool  # case, capsule, package: what investors usually hold
 
 
 @dataclass(frozen=True)
@@ -213,6 +272,72 @@ class SteamMarket:
             source="priceoverview",
         )
 
+    def resolve_vanity(self, name: str) -> str:
+        """SteamID64 behind steamcommunity.com/id/<name>."""
+        if not _VANITY_RE.match(name):
+            raise ProfileNotFound(name)
+        # Interactive and strictly limited by Steam: no backoff, the user retries.
+        resp = self._get(f"{COMMUNITY_URL}/id/{name}/", {"xml": 1}, self.request_delay, 0)
+        m = re.search(r"<steamID64>(7656119\d{10})</steamID64>", resp.text)
+        if not m:
+            raise ProfileNotFound(name)
+        return m.group(1)
+
+    def inventory(self, steamid: str, *, max_pages: int = 3, page_size: int = 2000) -> list[InventoryItem]:
+        """Marketable items of a public CS2 inventory, one entry per hash name.
+
+        Storage unit contents are not part of the public inventory.
+        """
+        if not _STEAMID_RE.match(steamid):
+            raise ProfileNotFound(steamid)
+        url = f"{COMMUNITY_URL}/inventory/{steamid}/{CS2_APPID}/2"
+        params: dict[str, object] = {"l": "english", "count": page_size}
+        descriptions: dict[tuple[str, str], dict] = {}
+        amounts: dict[tuple[str, str], int] = {}
+        for _ in range(max_pages):
+            try:
+                data = self._get_json(url, params, max_retries=0)
+            except SteamHTTPError as e:
+                if e.status in (401, 403):
+                    raise PrivateInventory(steamid) from e
+                if e.status in (400, 404):
+                    raise ProfileNotFound(steamid) from e
+                raise
+            if data is None:  # what Steam returns for some private profiles
+                raise PrivateInventory(steamid)
+            if not isinstance(data, dict) or data.get("success") not in (1, True):
+                raise SteamError("unexpected inventory response")
+            try:
+                for d in data.get("descriptions") or []:
+                    descriptions[(str(d["classid"]), str(d.get("instanceid", "0")))] = d
+                for a in data.get("assets") or []:
+                    key = (str(a["classid"]), str(a.get("instanceid", "0")))
+                    amounts[key] = amounts.get(key, 0) + int(a.get("amount") or 1)
+            except (KeyError, TypeError, ValueError) as e:
+                raise SteamError(f"unexpected inventory response: {e!r}") from e
+            if not data.get("more_items") or not data.get("last_assetid"):
+                break
+            params["start_assetid"] = data["last_assetid"]
+
+        items: dict[str, InventoryItem] = {}
+        for key, qty in amounts.items():
+            d = descriptions.get(key)
+            if not d or not _sellable(d):
+                continue
+            name = d.get("market_hash_name")
+            if not isinstance(name, str) or not name:
+                continue
+            old = items.get(name)
+            icon = d.get("icon_url") if isinstance(d.get("icon_url"), str) else None
+            items[name] = InventoryItem(
+                hash_name=name,
+                name=d.get("market_name") or d.get("name") or name,
+                icon_url=icon or (old.icon_url if old else None),
+                qty=qty + (old.qty if old else 0),
+                container=_is_container(d),
+            )
+        return sorted(items.values(), key=lambda i: (not i.container, i.name.lower()))
+
     # -- HTTP plumbing ------------------------------------------------------
 
     def _get_json(self, url: str, params: dict, *, min_interval: float | None = None,
@@ -250,7 +375,7 @@ class SteamMarket:
                         raise ItemNotFound(not_found_on_500)
                     error = f"server error ({resp.status_code})"
                 else:
-                    raise SteamError(f"HTTP {resp.status_code} from {url}")
+                    raise SteamHTTPError(resp.status_code, f"HTTP {resp.status_code} from {url}")
                 retry_after = _retry_after(resp)
                 if retry_after is not None:
                     delay = max(delay, retry_after)
@@ -273,6 +398,22 @@ class SteamMarket:
                 self._sleep(wait)
                 now += wait
         self._last_request = now
+
+
+def _sellable(d: dict) -> bool:
+    """Marketable now, or only held back for a while (trade protection, new items)."""
+    if d.get("marketable") in (1, True):
+        return True
+    # Temporarily restricted items carry an expiry; badges, coins and default
+    # music kits are never marketable and have none.
+    return bool(d.get("cache_expiration") or d.get("item_expiration"))
+
+
+def _is_container(d: dict) -> bool:
+    for tag in d.get("tags") or []:
+        if isinstance(tag, dict) and tag.get("category") == "Type" and tag.get("internal_name") == "CSGO_Type_WeaponCase":
+            return True
+    return False
 
 
 def _is_logical_failure(resp: requests.Response) -> bool:

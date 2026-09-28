@@ -165,3 +165,82 @@ def test_malformed_orderbook_is_a_steam_error(body):
     market, _ = make_market({"/orderbook": [FakeResponse(body=body)]})
     with pytest.raises(SteamError):
         market.orderbook("X")
+
+
+# -- inventory import -------------------------------------------------------------
+
+from cs2tracker.steam import PrivateInventory, ProfileNotFound, parse_profile  # noqa: E402
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("76561198004532679", ("steamid", "76561198004532679")),
+    ("https://steamcommunity.com/profiles/76561198004532679/inventory/#730", ("steamid", "76561198004532679")),
+    ("steamcommunity.com/id/Some_Name-1/", ("vanity", "Some_Name-1")),
+    ("https://steamcommunity.com/tradeoffer/new/?partner=44266951&token=AbC", ("steamid", "76561198004532679")),
+    ("https://steamcommunity.com/tradeoffer/new/?token=x&partner=44266951", ("steamid", "76561198004532679")),
+    ("breakout case", None),
+    ("https://steamcommunity.com/profiles/123/", None),
+    ("https://steamcommunity.com/id/../", None),
+    ("https://example.com/id/foo", None),
+])
+def test_parse_profile(text, expected):
+    assert parse_profile(text) == expected
+
+
+def inventory_body(assets, descriptions, more=False, last=None):
+    body = {"assets": assets, "descriptions": descriptions, "total_inventory_count": len(assets), "success": 1}
+    if more:
+        body.update(more_items=1, last_assetid=last)
+    return body
+
+
+def desc(classid, name, marketable=1, container=False, **extra):
+    tags = [{"category": "Type", "internal_name": "CSGO_Type_WeaponCase" if container else "CSGO_Type_Rifle"}]
+    return {"classid": classid, "instanceid": "0", "market_hash_name": name, "market_name": name,
+            "icon_url": f"icon-{classid}", "marketable": marketable, "tags": tags, **extra}
+
+
+def test_inventory_aggregates_filters_and_pages():
+    page1 = inventory_body(
+        [{"classid": "1", "instanceid": "0", "amount": "3"}, {"classid": "2", "instanceid": "0", "amount": "1"},
+         {"classid": "9", "instanceid": "0", "amount": "1"}],
+        [desc("1", "Shadow Case", container=True), desc("2", "AK-47 | Redline (Field-Tested)"),
+         desc("9", "Loyalty Badge", marketable=0)],
+        more=True, last="42")
+    page2 = inventory_body(
+        [{"classid": "1", "instanceid": "0", "amount": "2"}, {"classid": "5", "instanceid": "0", "amount": "1"}],
+        [desc("1", "Shadow Case", container=True), desc("5", "New Skin", marketable=0, cache_expiration="2026-10-05")])
+    market, _ = make_market({"/inventory/": [FakeResponse(body=page1), FakeResponse(body=page2)]})
+    items = market.inventory("76561198004532679")
+    assert [(i.hash_name, i.qty, i.container) for i in items] == [
+        ("Shadow Case", 5, True), ("AK-47 | Redline (Field-Tested)", 1, False), ("New Skin", 1, False)]
+    assert market.session.calls[1][1]["start_assetid"] == "42"
+
+
+@pytest.mark.parametrize("status, error", [(403, PrivateInventory), (400, ProfileNotFound)])
+def test_inventory_errors(status, error):
+    market, _ = make_market({"/inventory/": [FakeResponse(status=status, body=None)]})
+    with pytest.raises(error):
+        market.inventory("76561198004532679")
+
+
+def test_inventory_rate_limit_fails_fast():
+    market, sleeps = make_market({"/inventory/": [FakeResponse(status=429, body=None)]})
+    with pytest.raises(RateLimited):
+        market.inventory("76561198004532679")
+    assert sleeps == []  # no backoff while a user waits
+
+
+class TextResponse(FakeResponse):
+    @property
+    def text(self):
+        return self._body
+
+
+def test_resolve_vanity():
+    xml = "<profile><steamID64>76561197960287930</steamID64></profile>"
+    market, _ = make_market({"/id/": [TextResponse(body=xml)]})
+    assert market.resolve_vanity("gabelogannewell") == "76561197960287930"
+    market, _ = make_market({"/id/": [TextResponse(body="<response><error>not found</error></response>")]})
+    with pytest.raises(ProfileNotFound):
+        market.resolve_vanity("nobody")

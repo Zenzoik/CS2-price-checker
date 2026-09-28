@@ -16,10 +16,26 @@
     en: {
       addItem: "Add item", add: "Add", save: "Save", boughtMore: "Buy more", remove: "Remove",
       emptyTitle: "No items yet",
-      emptyText: "Add the cases, capsules or skins you bought — you'll see what they're worth now.",
+      emptyText: "Add the cases, capsules or skins you bought — or paste your Steam profile link in search to import the inventory.",
       invested: "Invested", worth: "You'd get now", unpricedCost: "+ {cost} without a price", total: "Total",
-      searchPlaceholder: "Case, capsule, skin…",
-      searchHint: "Search the Steam market",
+      searchPlaceholder: "Item name or Steam profile link",
+      searchHint: "Search the Steam market, or paste a link to your Steam profile or trade offer to import your inventory.",
+      notSet: "not set", noBuyPrice: "{qty} pcs · price paid not set", withoutBuy: "{n} without a price paid",
+      hasNoPrice: "You have {qty} without a price paid.", becomesNoPrice: "Will become {qty}, price paid not set.",
+      importN: "Import {n}", selected: "{n} of {total} selected", selectAll: "Select all", selectNone: "Clear",
+      mode_none: "No price", mode_market: "Today's", mode_manual: "Manual",
+      modeHint_none: "Only the total value is shown. You can add prices later in each item.",
+      modeHint_market: "Price paid = what selling today would bring, so profit starts from zero today.",
+      modeHint_manual: "Enter the price paid for each item; leave empty if unknown.",
+      room: "room for {n}", pnlScope: "on {n} of {total}",
+      noSellable: "No marketable CS2 items in this inventory.",
+      storageNote: "Items inside storage units aren't visible to Steam's public inventory.",
+      err_not_profile: "That doesn't look like a Steam profile link.",
+      err_profile_not_found: "No Steam profile at this link.",
+      err_inventory_private: "This inventory is private. In Steam: Profile → Edit Profile → Privacy Settings → Inventory: Public.",
+      err_steam_rate: "Steam limits inventory lookups. Try again in a couple of minutes.",
+      err_inventory_busy: "Many imports right now. Try again in a minute.",
+      err_import_expired: "The inventory list was refreshed. Check it and tap Import again.",
       nothingFound: "Nothing found",
       inPortfolio: "In portfolio",
       qty: "Quantity", buyPrice: "Price paid, each",
@@ -45,10 +61,26 @@
     ru: {
       addItem: "Добавить предмет", add: "Добавить", save: "Сохранить", boughtMore: "Докупить", remove: "Убрать",
       emptyTitle: "Пока пусто",
-      emptyText: "Добавьте кейсы, капсулы или скины, которые купили, — увидите, сколько они стоят сейчас.",
+      emptyText: "Добавьте кейсы, капсулы или скины, которые купили, — или вставьте в поиск ссылку на профиль Steam, чтобы импортировать инвентарь.",
       invested: "Вложено", worth: "Получите сейчас", unpricedCost: "+ {cost} без цены", total: "Итого",
-      searchPlaceholder: "Кейс, капсула, скин…",
-      searchHint: "Поиск по торговой площадке Steam",
+      searchPlaceholder: "Название или ссылка на профиль Steam",
+      searchHint: "Поиск по торговой площадке Steam. Или вставьте ссылку на свой профиль Steam или трейд-ссылку — импортируем инвентарь.",
+      notSet: "не указана", noBuyPrice: "{qty} шт. · цена покупки не указана", withoutBuy: "без цены покупки: {n}",
+      hasNoPrice: "У вас {qty} шт. без цены покупки.", becomesNoPrice: "Станет {qty} шт., цена покупки не указана.",
+      importN: "Импортировать {n}", selected: "Выбрано {n} из {total}", selectAll: "Выбрать все", selectNone: "Снять все",
+      mode_none: "Без цены", mode_market: "Текущая", mode_manual: "Вручную",
+      modeHint_none: "Покажем только общую стоимость. Цену покупки можно указать позже в карточке предмета.",
+      modeHint_market: "Цена покупки = сколько вы получили бы при продаже сегодня; прибыль считается с нуля.",
+      modeHint_manual: "Укажите цену покупки за штуку; пустые останутся без цены.",
+      room: "можно {n}", pnlScope: "по {n} из {total}",
+      noSellable: "В этом инвентаре нет предметов CS2, которые можно продать.",
+      storageNote: "Предметы внутри хранилищ (Storage Unit) Steam не показывает.",
+      err_not_profile: "Это не похоже на ссылку на профиль Steam.",
+      err_profile_not_found: "Профиль Steam по этой ссылке не найден.",
+      err_inventory_private: "Инвентарь скрыт. В Steam: Профиль → Редактировать профиль → Приватность → Инвентарь: Открытый.",
+      err_steam_rate: "Steam ограничивает запросы инвентаря. Попробуйте через пару минут.",
+      err_inventory_busy: "Сейчас много импортов. Попробуйте через минуту.",
+      err_import_expired: "Список инвентаря обновлён. Проверьте его и нажмите «Импортировать» ещё раз.",
       nothingFound: "Ничего не найдено",
       inPortfolio: "В портфеле",
       qty: "Количество", buyPrice: "Цена покупки за шт.",
@@ -74,10 +106,26 @@
     uk: {
       addItem: "Додати предмет", add: "Додати", save: "Зберегти", boughtMore: "Докупити", remove: "Прибрати",
       emptyTitle: "Поки порожньо",
-      emptyText: "Додайте кейси, капсули чи скіни, які купили, — побачите, скільки вони коштують зараз.",
+      emptyText: "Додайте кейси, капсули чи скіни, які купили, — або вставте в пошук посилання на профіль Steam, щоб імпортувати інвентар.",
       invested: "Вкладено", worth: "Отримаєте зараз", unpricedCost: "+ {cost} без ціни", total: "Разом",
-      searchPlaceholder: "Кейс, капсула, скін…",
-      searchHint: "Пошук на торговому майданчику Steam",
+      searchPlaceholder: "Назва або посилання на профіль Steam",
+      searchHint: "Пошук на торговому майданчику Steam. Або вставте посилання на свій профіль Steam чи трейд-посилання — імпортуємо інвентар.",
+      notSet: "не вказана", noBuyPrice: "{qty} шт. · ціна купівлі не вказана", withoutBuy: "без ціни купівлі: {n}",
+      hasNoPrice: "У вас {qty} шт. без ціни купівлі.", becomesNoPrice: "Стане {qty} шт., ціна купівлі не вказана.",
+      importN: "Імпортувати {n}", selected: "Вибрано {n} з {total}", selectAll: "Вибрати всі", selectNone: "Зняти всі",
+      mode_none: "Без ціни", mode_market: "Поточна", mode_manual: "Вручну",
+      modeHint_none: "Покажемо лише загальну вартість. Ціну купівлі можна вказати пізніше в картці предмета.",
+      modeHint_market: "Ціна купівлі = скільки ви отримали б при продажу сьогодні; прибуток рахується з нуля.",
+      modeHint_manual: "Вкажіть ціну купівлі за штуку; порожні залишаться без ціни.",
+      room: "можна {n}", pnlScope: "за {n} з {total}",
+      noSellable: "У цьому інвентарі немає предметів CS2, які можна продати.",
+      storageNote: "Предмети всередині сховищ (Storage Unit) Steam не показує.",
+      err_not_profile: "Це не схоже на посилання на профіль Steam.",
+      err_profile_not_found: "Профіль Steam за цим посиланням не знайдено.",
+      err_inventory_private: "Інвентар приховано. У Steam: Профіль → Редагувати профіль → Приватність → Інвентар: Відкритий.",
+      err_steam_rate: "Steam обмежує запити інвентарю. Спробуйте за кілька хвилин.",
+      err_inventory_busy: "Зараз багато імпортів. Спробуйте за хвилину.",
+      err_import_expired: "Список інвентарю оновлено. Перевірте його й натисніть «Імпортувати» ще раз.",
       nothingFound: "Нічого не знайдено",
       inPortfolio: "У портфелі",
       qty: "Кількість", buyPrice: "Ціна купівлі за шт.",
@@ -380,15 +428,23 @@
 
   // -- screen: portfolio -------------------------------------------------------
 
+  // value: everything with a market price. P&L and "invested" only cover items
+  // whose price paid is known; the rest is counted and named separately.
   function totals(items) {
-    let value = 0, pricedCost = 0, cost = 0, unpriced = 0;
+    let value = 0, trackedValue = 0, pricedCost = 0, cost = 0, unpriced = 0, noBuy = 0, tracked = 0;
     for (const it of items) {
-      cost += it.buy_price * it.qty;
+      const known = it.buy_price != null;
+      if (known) cost += it.buy_price * it.qty;
+      else noBuy += 1;
       if (it.price == null) { unpriced += 1; continue; }
       value += net(it.price) * it.qty;
-      pricedCost += it.buy_price * it.qty;
+      if (known) {
+        tracked += 1;
+        trackedValue += net(it.price) * it.qty;
+        pricedCost += it.buy_price * it.qty;
+      }
     }
-    return { value, pricedCost, cost, unpriced };
+    return { value, trackedValue, pricedCost, cost, unpriced, noBuy, tracked };
   }
 
   function showHome({ keepScroll = false } = {}) {
@@ -429,8 +485,8 @@
       return;
     }
 
-    const { value, pricedCost, cost, unpriced } = totals(p.items);
-    const pnl = value - pricedCost;
+    const { value, trackedValue, pricedCost, cost, unpriced, noBuy, tracked } = totals(p.items);
+    const pnl = trackedValue - pricedCost;
     const worth = (it) => (it.price == null ? -1 : net(it.price) * it.qty);
     const items = [...p.items].sort((a, b) => worth(b) - worth(a));
 
@@ -442,10 +498,13 @@
       h("section", { class: "hero" },
         h("div", { class: "hero-value num" }, money(value)),
         pricedCost > 0 && h("div", { class: `hero-pnl num ${trend(pnl / pricedCost)}` },
-          `${money(pnl, true)} · ${percent(pnl / pricedCost)}`),
+          `${money(pnl, true)} · ${percent(pnl / pricedCost)}`,
+          // Say what the profit covers when some items have no price paid.
+          noBuy > 0 && h("span", { class: "hint scope" }, ` · ${t("pnlScope", { n: tracked, total: p.items.length })}`)),
         // Invested matches what value and P&L cover; unpriced items are listed apart.
-        h("div", { class: "hero-sub hint num" }, `${t("invested")} ${money(pricedCost)}`,
+        (pricedCost > 0 || cost > 0) && h("div", { class: "hero-sub hint num" }, `${t("invested")} ${money(pricedCost)}`,
           cost > pricedCost && ` ${t("unpricedCost", { cost: money(cost - pricedCost) })}`),
+        noBuy > 0 && pricedCost === 0 && h("div", { class: "hero-sub hint" }, t("withoutBuy", { n: noBuy })),
       ),
       h("ul", { class: "list" }, items.map(homeRow)),
       h("p", { class: "foot hint" }, foot.join(" · ")),
@@ -457,11 +516,13 @@
     const priced = it.price != null;
     const value = priced ? net(it.price) * it.qty : null;
     const ratio = priced && it.buy_price > 0 ? net(it.price) / it.buy_price - 1 : null;
+    const sub = it.buy_price == null ? t("noBuyPrice", { qty: it.qty })
+      : t("position", { qty: it.qty, price: money(it.buy_price) });
     return tappable(h("li", { class: "row" },
       thumb(it.icon),
       h("div", { class: "row-main" },
         h("div", { class: "row-title" }, it.name),
-        h("div", { class: "row-sub hint num" }, t("position", { qty: it.qty, price: money(it.buy_price) })),
+        h("div", { class: "row-sub hint num" }, sub),
       ),
       h("div", { class: "row-side num" },
         h("div", { class: "row-value" }, money(value)),
@@ -476,7 +537,7 @@
 
   function showSearch() {
     state.screen = "search";
-    state.back = () => showHome();
+    state.back = () => { if (!imp.busy) showHome(); };
     setBack(true);
     main.set(null);
     secondary.set(null);
@@ -499,6 +560,12 @@
     if (search.ctrl) search.ctrl.abort();
     search.ctrl = null;
     const q = value.trim();
+    if (looksLikeProfile(q)) {
+      loadInventory(q);
+      return;
+    }
+    resetImport();
+    main.set(null);
     if (q.length < 2) {
       Object.assign(search, { results: null, error: null, loading: false });
       renderResults();
@@ -535,6 +602,10 @@
   function renderResults() {
     const box = document.getElementById("results");
     if (!box) return;
+    if (imp.loading || imp.data || imp.error) {
+      renderImport(box);
+      return;
+    }
     let content;
     if (search.loading) {
       content = h("ul", { class: "list" }, [0, 1, 2, 3].map(() => h("li", { class: "row" },
@@ -562,6 +633,246 @@
     box.replaceChildren(content);
   }
 
+  // -- import from a Steam inventory ------------------------------------------
+  // A profile / trade link pasted into search turns the result list into this.
+
+  const imp = { key: "", loading: false, data: null, error: null, ctrl: null,
+                selected: new Set(), mode: "none", prices: new Map(), busy: false };
+
+  function looksLikeProfile(q) {
+    return /^7656119\d{10}$/.test(q) || /steamcommunity\.com\/(id|profiles|tradeoffer)\//i.test(q);
+  }
+
+  function resetImport() {
+    if (imp.ctrl) imp.ctrl.abort();
+    Object.assign(imp, { key: "", loading: false, data: null, error: null, ctrl: null });
+  }
+
+  // keep: after "import expired", carry the user's choices over to the fresh list.
+  async function loadInventory(q, { keep = false } = {}) {
+    if (!keep && imp.key === q && (imp.loading || imp.data)) { renderResults(); return; }
+    const kept = keep ? { selected: imp.selected, prices: imp.prices, mode: imp.mode } : null;
+    resetImport();
+    const ctrl = new AbortController();
+    Object.assign(imp, { key: q, loading: true, ctrl });
+    Object.assign(search, { loading: false, results: null, error: null });
+    renderResults();
+    let data = null;
+    let error = null;
+    try {
+      data = await api(`/api/inventory?profile=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      error = e;
+    }
+    if (imp.ctrl !== ctrl) return; // the query changed meanwhile
+    Object.assign(imp, { ctrl: null, loading: false, data, error, prices: new Map() });
+    if (data) {
+      const free = data.items.filter((i) => !i.held);
+      if (kept) {
+        const names = new Set(free.map((i) => i.hash_name));
+        imp.selected = new Set([...kept.selected].filter((n) => names.has(n)));
+        imp.prices = kept.prices;
+        imp.mode = kept.mode;
+      } else {
+        // Cases and capsules are what people invest in; take everything if there are none.
+        const containers = free.filter((i) => i.container);
+        const pick = (containers.length ? containers : free).slice(0, data.room);
+        imp.selected = new Set(pick.map((i) => i.hash_name));
+      }
+    }
+    if (state.screen === "search") renderResults();
+  }
+
+  function importPrices() {
+    // Manual mode: every filled-in price must parse; empty ones stay unknown.
+    const out = new Map();
+    for (const name of imp.selected) {
+      const text = (imp.prices.get(name) || "").trim();
+      if (imp.mode !== "manual" || !text) { out.set(name, null); continue; }
+      const v = parseAmount(text);
+      if (v == null) return null;
+      out.set(name, v);
+    }
+    return out;
+  }
+
+  function updateImportButton() {
+    const n = imp.selected.size;
+    const fits = imp.data && n <= imp.data.room;
+    main.set(t("importN", { n }), doImport, { enabled: n > 0 && fits && importPrices() != null, busy: imp.busy });
+  }
+
+  function renderImport(box) {
+    if (imp.loading) {
+      main.set(null);
+      box.replaceChildren(h("ul", { class: "list" }, [0, 1, 2, 3].map(() => h("li", { class: "row" },
+        h("div", { class: "thumb placeholder" }),
+        h("div", { class: "row-main" }, h("div", { class: "sk sk-line" })),
+      ))));
+      return;
+    }
+    if (imp.error) {
+      main.set(null);
+      box.replaceChildren(tappable(h("p", { class: "message tappable" }, errorText(imp.error), h("br"), t("retry")), () => {
+        const q = imp.key;
+        resetImport();
+        loadInventory(q);
+      }));
+      return;
+    }
+    const data = imp.data;
+    if (!data.items.length) {
+      main.set(null);
+      box.replaceChildren(h("p", { class: "message" }, t("noSellable"), h("br"), t("storageNote")));
+      return;
+    }
+
+    const free = data.items.filter((i) => !i.held);
+    const modeHint = h("p", { class: "note" });
+    const count = h("span", {});
+    const toggleAll = h("button", { type: "button", class: "link-btn" });
+    const sides = new Map(); // hash name -> function that refreshes the row's right side
+
+    const segmented = h("div", { class: "segmented", role: "radiogroup" });
+    const modes = ["none", "market", "manual"].map((m) => h("button", {
+      type: "button", role: "radio",
+      onclick: () => {
+        if (imp.mode === m) return;
+        imp.mode = m;
+        haptic.tap();
+        sync();
+      },
+    }, t(`mode_${m}`)));
+    segmented.append(...modes);
+
+    // Updates everything that depends on the selection or mode, in place, so
+    // scroll position and a focused price field survive.
+    function sync() {
+      modes.forEach((b, i) => {
+        const on = ["none", "market", "manual"][i] === imp.mode;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-checked", String(on));
+      });
+      modeHint.textContent = t(`modeHint_${imp.mode}`);
+      const over = imp.selected.size > data.room;
+      count.className = over ? "down" : "hint";
+      count.textContent = t("selected", { n: imp.selected.size, total: free.length })
+        + (over || data.room < free.length ? ` · ${t("room", { n: data.room })}` : "");
+      const full = imp.selected.size >= Math.min(free.length, data.room);
+      toggleAll.textContent = full ? t("selectNone") : t("selectAll");
+      toggleAll.hidden = free.length === 0;
+      sides.forEach((refresh) => refresh());
+      updateImportButton();
+    }
+
+    toggleAll.addEventListener("click", () => {
+      const full = imp.selected.size >= Math.min(free.length, data.room);
+      imp.selected = full ? new Set() : new Set(free.slice(0, data.room).map((i) => i.hash_name));
+      haptic.tap();
+      rows.forEach((r) => r.sync());
+      sync();
+    });
+
+    const rows = data.items.map((it) => {
+      const side = h("div", { class: "pick-side" });
+      const sub = h("div", { class: "row-sub hint num" });
+      const row = h("li", { class: `row pick${it.held ? " disabled" : ""}` },
+        h("span", { class: "check", "aria-hidden": "true" }),
+        thumb(it.icon),
+        h("div", { class: "row-main" }, h("div", { class: "row-title" }, it.name), sub),
+        side,
+      );
+      let input = null;
+      const refreshSide = () => {
+        const on = imp.selected.has(it.hash_name);
+        const known = it.price != null ? money(it.price) : null;
+        sub.textContent = on && known && imp.mode !== "none" ? `× ${it.qty} · ${known}` : `× ${it.qty}`;
+        if (it.held) { side.replaceChildren(h("span", { class: "badge" }, t("inPortfolio"))); return; }
+        if (on && imp.mode === "manual") {
+          if (!input) {
+            input = h("input", {
+              class: "price-input num", type: "text", inputmode: "decimal", enterkeyhint: "done",
+              autocomplete: "off", placeholder: "—", // empty = unknown; today's price is in the row
+              "aria-label": t("buyPrice"),
+              onclick: (e) => e.stopPropagation(),
+              oninput: (e) => {
+                imp.prices.set(it.hash_name, e.target.value);
+                e.target.classList.toggle("invalid", e.target.value.trim() !== "" && parseAmount(e.target.value) == null);
+                updateImportButton();
+              },
+              onkeydown: (e) => {
+                e.stopPropagation(); // Enter must not toggle the row
+                if (e.key === "Enter") e.target.blur();
+              },
+            });
+            input.value = imp.prices.get(it.hash_name) || "";
+          }
+          if (side.firstChild !== input) side.replaceChildren(input);
+        } else {
+          side.replaceChildren();
+        }
+      };
+      sides.set(it.hash_name, refreshSide);
+      row.sync = () => {
+        const on = imp.selected.has(it.hash_name);
+        row.classList.toggle("selected", on);
+        if (!it.held) row.setAttribute("aria-checked", String(on));
+      };
+      row.sync();
+      if (it.held) return row;
+      tappable(row, () => {
+        if (imp.selected.has(it.hash_name)) imp.selected.delete(it.hash_name);
+        else imp.selected.add(it.hash_name);
+        haptic.tap();
+        row.sync();
+        sync();
+      });
+      return row;
+    });
+
+    box.replaceChildren(
+      segmented,
+      modeHint,
+      h("div", { class: "import-head" }, count, toggleAll),
+      h("ul", { class: "list" }, rows),
+      h("p", { class: "foot hint" }, t("storageNote")),
+    );
+    sync();
+  }
+
+  async function doImport() {
+    const prices = importPrices();
+    if (imp.busy || !prices || !imp.data) return;
+    imp.busy = true;
+    updateImportButton();
+    try {
+      const p = await api("/api/import", {
+        method: "POST",
+        body: {
+          steamid: imp.data.steamid,
+          price_mode: imp.mode,
+          items: [...imp.selected].map((name) => ({ hash_name: name, buy_price: prices.get(name) })),
+        },
+      });
+      setPortfolio(p);
+      haptic.ok();
+      imp.busy = false;
+      resetImport();
+      search.query = "";
+      showHome();
+    } catch (e) {
+      imp.busy = false;
+      haptic.fail();
+      if (e.code === "import_expired") {
+        loadInventory(imp.key, { keep: true });
+      } else {
+        updateImportButton();
+      }
+      alertUser(errorText(e));
+    }
+  }
+
   // -- screen: item ------------------------------------------------------------
 
   // mode "edit": change or remove a position; mode "add": record a purchase,
@@ -582,7 +893,8 @@
     }, item.name, h("span", { class: "external", "aria-hidden": "true" }, " ↗"));
 
     const qty = numberInput("numeric", editing ? String(item.qty) : "1", "next");
-    const buy = numberInput("decimal", editing ? plainAmount(item.buy_price) : "", "done");
+    const buy = numberInput("decimal", editing && item.buy_price != null ? plainAmount(item.buy_price) : "", "done");
+    buy.placeholder = t("notSet");
     qty.addEventListener("keydown", (e) => { if (e.key === "Enter") buy.focus(); });
     buy.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
@@ -599,35 +911,43 @@
         : priceError ? errorText(priceError)
         : price == null ? t("noPrice")
         : t("now", { price: money(price), net: money(net(price)) }));
-      if (!editing && price != null) buy.placeholder = plainAmount(price);
     }
 
     function refresh() {
       const q = parseQty(qty.value);
-      const b = parseAmount(buy.value);
+      // An empty price paid is allowed and means "unknown".
+      const bEmpty = buy.value.trim() === "";
+      const b = bEmpty ? null : parseAmount(buy.value);
+      const bValid = bEmpty || b != null;
       const removing = editing && q === 0;
       qtyField.classList.toggle("invalid", qty.value !== "" && (q == null || (!editing && q === 0)));
-      buyField.classList.toggle("invalid", buy.value !== "" && b == null);
+      buyField.classList.toggle("invalid", !bValid);
 
       // Note: what adding does to the position, or how to remove.
       let noteText = "";
       if (editing) noteText = t("zeroHint");
-      else if (held && q && b != null) {
+      else if (held && q && bValid) {
         const total = held.qty + q;
-        const avg = Math.round(((held.qty * held.buy_price + q * b) / total) * 100) / 100;
-        noteText = t("becomes", { qty: total, price: money(avg) });
-      } else if (held) noteText = t("has", { qty: held.qty, price: money(held.buy_price) });
+        if (b == null || held.buy_price == null) noteText = t("becomesNoPrice", { qty: total });
+        else {
+          const avg = Math.round(((held.qty * held.buy_price + q * b) / total) * 100) / 100;
+          noteText = t("becomes", { qty: total, price: money(avg) });
+        }
+      } else if (held) {
+        noteText = held.buy_price == null ? t("hasNoPrice", { qty: held.qty })
+          : t("has", { qty: held.qty, price: money(held.buy_price) });
+      }
       note.textContent = noteText;
       note.hidden = !noteText;
 
       const rows = [];
-      if (q && b != null && !removing) {
-        const cost = q * b;
-        if (editing || q > 1) rows.push(summaryRow(t(editing ? "invested" : "total"), money(cost)));
-        if (price != null && cost > 0) {
+      if (q && bValid && !removing) {
+        const cost = b == null ? null : q * b;
+        if (cost != null && (editing || q > 1)) rows.push(summaryRow(t(editing ? "invested" : "total"), money(cost)));
+        if (price != null) {
           const worth = q * net(price);
-          const r = worth / cost - 1;
-          rows.push(summaryRow(t("worth"), money(worth), [` ${percent(r)}`, trend(r)]));
+          const r = cost > 0 ? worth / cost - 1 : null;
+          rows.push(summaryRow(t("worth"), money(worth), r != null && [` ${percent(r)}`, trend(r)]));
         }
       }
       summary.replaceChildren(...rows);
@@ -635,7 +955,7 @@
       if (removing) {
         main.set(t("remove"), remove, { busy: state.busy, danger: true });
       } else {
-        const valid = q != null && q > 0 && b != null;
+        const valid = q != null && q > 0 && bValid;
         const changed = !editing || q !== item.qty || b !== item.buy_price;
         main.set(t(editing ? "save" : "add"), () => save(q, b), { enabled: valid && changed, busy: state.busy });
       }
