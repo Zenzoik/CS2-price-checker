@@ -143,9 +143,9 @@ class TelegramBot:
                           chat_id=str(user_id), caption=caption[:1000])
 
     async def send_photo(self, user_id: int, data: bytes, caption: str = "") -> None:
-        """A picture the user can forward; raises BotApiError."""
-        await self.upload("sendPhoto", "photo", "portfolio.jpg", data, "image/jpeg",
-                          chat_id=str(user_id), caption=caption[:1000], reply_markup=self._share_markup(user_id))
+        """A picture the user can forward; `caption` is HTML. Raises BotApiError."""
+        await self.upload("sendPhoto", "photo", "portfolio.jpg", data, "image/jpeg", chat_id=str(user_id),
+                          caption=caption[:1000], parse_mode="HTML", reply_markup=self._share_markup(user_id))
 
     def _share_markup(self, user_id: int) -> dict:
         # Forwarded or shared messages can't carry a web_app button: link to the bot.
@@ -154,10 +154,11 @@ class TelegramBot:
         return {"inline_keyboard": [[{"text": texts(lang)["track"], "url": url}]]}
 
     async def prepare_share(self, user_id: int, photo_url: str, caption: str = "") -> str:
-        """A prepared message for Telegram.WebApp.shareMessage; raises BotApiError."""
+        """A prepared message for Telegram.WebApp.shareMessage (`caption` is HTML); raises BotApiError."""
         result = await self.call("savePreparedInlineMessage", user_id=user_id, result={
             "type": "photo", "id": photo_url.rsplit("/", 1)[-1][:64], "photo_url": photo_url,
-            "thumbnail_url": photo_url, "caption": caption[:1000], "reply_markup": self._share_markup(user_id),
+            "thumbnail_url": photo_url, "caption": caption[:1000], "parse_mode": "HTML",
+            "reply_markup": self._share_markup(user_id),
         }, allow_user_chats=True, allow_group_chats=True, allow_channel_chats=True)
         return result["id"]
 

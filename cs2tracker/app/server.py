@@ -7,6 +7,7 @@ Every /api request carries the Mini App's signed init data in
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import math
@@ -57,10 +58,17 @@ ICON_URL = "https://community.fastly.steamstatic.com/economy/image/{icon}/96fx96
 ICONS_PER_MINUTE = 60
 MAX_ICON = 256 * 1024
 MAX_ICONS_CACHED = 500
+# Story captions are plain text, so they spell the link out; message captions
+# (HTML) hide it behind the words.
 SHARE_TEXTS = {
     "en": "My CS2 portfolio. Track yours: {link}",
     "ru": "Мой портфель CS2. Следите за своим: {link}",
     "uk": "Мій портфель CS2. Стежте за своїм: {link}",
+}
+SHARE_CAPTIONS = {
+    "en": 'My CS2 portfolio. <a href="{link}">Track yours</a>',
+    "ru": 'Мой портфель CS2. <a href="{link}">Следите за своим</a>',
+    "uk": 'Мій портфель CS2. <a href="{link}">Стежте за своїм</a>',
 }
 
 CSP = "; ".join([
@@ -541,11 +549,11 @@ async def share(request: web.Request) -> web.Response:
         raise ApiError(503, "unavailable", "The bot is not running")
     if mode == "message":
         try:
-            return web.json_response({"prepared": await bot.prepare_share(user_id, url, _share_text(request))})
+            return web.json_response({"prepared": await bot.prepare_share(user_id, url, _share_text(request, True))})
         except Exception as e:  # e.g. an older Bot API or inline sharing disabled
             log.info("Prepared share for %s failed, sending the picture instead: %s", user_id, e)
     try:
-        await bot.send_photo(user_id, data, _share_text(request))
+        await bot.send_photo(user_id, data, _share_text(request, True))
     except Exception as e:
         log.warning("Share picture to %s failed: %s", user_id, e)
         raise ApiError(502, "send_failed", "The bot could not send the picture") from e
@@ -589,11 +597,15 @@ async def fetch_icon(name: str) -> tuple[str, bytes]:
             return kind, bytes(data)
 
 
-def _share_text(request: web.Request) -> str:
+def _share_text(request: web.Request, as_html: bool = False) -> str:
+    """The caption: plain text for stories, HTML with a text link for messages."""
     bot = request.app[BOT]
     username = getattr(bot, "username", None)
     link = f"https://t.me/{username}" if username else request.app[SETTINGS].public_url
-    return SHARE_TEXTS[language(request.app[STORE].user_language(request[USER_ID]))].format(link=link)
+    lang = language(request.app[STORE].user_language(request[USER_ID]))
+    if as_html:
+        return SHARE_CAPTIONS[lang].format(link=html.escape(link, quote=True))
+    return SHARE_TEXTS[lang].format(link=link)
 
 
 async def shared_picture(request: web.Request) -> web.Response:

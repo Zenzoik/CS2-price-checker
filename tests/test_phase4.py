@@ -204,6 +204,8 @@ def test_share_message_prepares_or_falls_back_to_the_chat(tmp_path, prepare_fail
             assert body == {"sent": True} and bot.photos[0][:2] == (42, JPEG)
         else:
             assert body == {"prepared": "prep-1"} and bot.prepared[0][1].endswith(".jpg")
+        caption = (bot.photos or bot.prepared)[0][2]
+        assert caption == 'My CS2 portfolio. <a href="https://t.me/cstrackerbot">Track yours</a>'
     run(tmp_path, scenario, bot=bot)
 
 
@@ -292,6 +294,7 @@ def test_bot_uploads_files_and_prepares_shares():
     assert asyncio.run(bot.prepare_share(5, "https://example.com/share/k.jpg", "hi")) == "p1"
     _, params, _ = session.posts[1]
     assert params["result"]["photo_url"] == params["result"]["thumbnail_url"]
+    assert params["result"]["parse_mode"] == "HTML"
     assert params["result"]["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://t.me/cstrackerbot"
     session.body = '{"ok": false, "description": "Forbidden: bot was blocked by the user"}'
     with pytest.raises(BotApiError, match="sendPhoto: Forbidden"):
