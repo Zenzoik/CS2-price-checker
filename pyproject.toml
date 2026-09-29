@@ -17,8 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-app = ["aiohttp>=3.9"]
-dev = ["pytest>=8", "aiohttp>=3.9"]
+app = ["aiohttp>=3.9", "pillow>=10"]
+dev = ["pytest>=8", "aiohttp>=3.9", "pillow>=10"]
 
 [project.scripts]
 cs2tracker = "cs2tracker.cli:main"
@@ -28,7 +28,7 @@ cs2tracker-app = "cs2tracker.app.__main__:main"
 packages = ["cs2tracker", "cs2tracker.app"]
 
 [tool.setuptools.package-data]
-"cs2tracker.app" = ["static/*"]
+"cs2tracker.app" = ["static/*", "fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

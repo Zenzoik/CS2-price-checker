@@ -28,6 +28,7 @@ TEXTS = {
         "track": "Track your CS2 items",
         "menu": "Portfolio",
         "private": "Sorry, this bot is private.",
+        "inline_hint": "\n\nIn any chat, type @{bot} and an item's name to send its price card.",
     },
     "ru": {
         "welcome": "Сколько сейчас стоят ваши предметы CS2.\n\n"
@@ -37,6 +38,7 @@ TEXTS = {
         "track": "Следить за своими предметами CS2",
         "menu": "Портфель",
         "private": "Извините, это приватный бот.",
+        "inline_hint": "\n\nВ любом чате напишите @{bot} и название предмета — отправлю карточку с его ценой.",
     },
     "uk": {
         "welcome": "Скільки зараз коштують ваші предмети CS2.\n\n"
@@ -46,6 +48,7 @@ TEXTS = {
         "track": "Стежити за своїми предметами CS2",
         "menu": "Портфель",
         "private": "Вибачте, це приватний бот.",
+        "inline_hint": "\n\nУ будь-якому чаті напишіть @{bot} і назву предмета — надішлю картку з його ціною.",
     },
 }
 
@@ -99,6 +102,9 @@ class TelegramBot:
         self.session = session
         self.store = store  # usage statistics; optional
         self.username: str | None = None  # from getMe, for t.me links
+        self.supports_inline = False  # "@bot query" is switched on in @BotFather
+        self.inline = None  # InlineMode, when the service runs it
+        self._inline_tasks: dict[int, asyncio.Task] = {}
 
     async def call(self, method: str, **params):
         """Bot API call; every failure comes out as BotApiError with the token redacted."""
@@ -213,6 +219,7 @@ class TelegramBot:
     async def setup(self) -> None:
         me = await self.call("getMe")
         self.username = me.get("username") if isinstance(me, dict) else None
+        self.supports_inline = bool(isinstance(me, dict) and me.get("supports_inline_queries"))
         # getUpdates does not work while a webhook is set.
         await self.call("deleteWebhook")
         await self.call("setChatMenuButton", menu_button={
@@ -234,7 +241,7 @@ class TelegramBot:
         while True:
             try:
                 updates = await self.call("getUpdates", offset=offset, timeout=POLL_TIMEOUT,
-                                          allowed_updates=["message"])
+                                          allowed_updates=["message", "inline_query", "chosen_inline_result"])
             except BotApiError as e:
                 log.warning("getUpdates failed, retrying in 5s: %s", e)
                 await asyncio.sleep(5)
@@ -249,6 +256,15 @@ class TelegramBot:
                     log.warning("Could not answer an update: %s", self._redact(repr(e)))
 
     async def handle(self, update: dict) -> None:
+        if isinstance(update.get("inline_query"), dict):
+            self._answer_inline(update["inline_query"])
+            return
+        chosen = update.get("chosen_inline_result")
+        if isinstance(chosen, dict):  # only with inline feedback on in @BotFather
+            user_id = (chosen.get("from") or {}).get("id")
+            if self.store is not None and isinstance(user_id, int):
+                self.store.log_event(user_id, "inline_sent")
+            return
         message = update.get("message")
         if not isinstance(message, dict):
             return
@@ -267,7 +283,43 @@ class TelegramBot:
         if not self.settings.allows(user["id"]):
             await self.call("sendMessage", chat_id=chat["id"], text=t["private"])
             return
+        # A card's "Track the price" button: that item, opened in the app.
+        text = message.get("text") or ""
+        if text.startswith("/start ") and self.inline is not None:
+            item = self.inline.start_payload(text.split(maxsplit=1)[1].strip(), user.get("language_code"))
+            if item is not None:
+                await self.call("sendMessage", chat_id=chat["id"], text=item[0], reply_markup=item[1])
+                return
         # Any message gets the button: there is nothing else to talk about.
-        await self.call("sendMessage", chat_id=chat["id"], text=t["welcome"], reply_markup={
+        welcome = t["welcome"]
+        if self.supports_inline and self.username:
+            welcome += t["inline_hint"].format(bot=self.username)
+        await self.call("sendMessage", chat_id=chat["id"], text=welcome, reply_markup={
             "inline_keyboard": [[{"text": t["open"], "web_app": {"url": self.settings.public_url}}]],
         })
+
+    def _answer_inline(self, query: dict) -> None:
+        """Answered in a task of its own, so a slow Steam search holds up no other update.
+
+        A newer query from the same user (they kept typing) cancels the older one.
+        """
+        self.supports_inline = True  # a query came, so it is on (even if switched on since start)
+        user_id = (query.get("from") or {}).get("id")
+        if self.inline is None or not isinstance(user_id, int):
+            return
+        previous = self._inline_tasks.pop(user_id, None)
+        if previous is not None:
+            previous.cancel()
+
+        async def answer() -> None:
+            try:
+                await self.inline.answer(query)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # e.g. the query expired while Steam answered
+                log.info("Inline query not answered: %s", self._redact(repr(e)))
+            finally:
+                if self._inline_tasks.get(user_id) is task:
+                    del self._inline_tasks[user_id]
+        task = asyncio.ensure_future(answer())
+        self._inline_tasks[user_id] = task

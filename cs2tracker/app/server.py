@@ -28,6 +28,7 @@ from .db import (
     DIGESTS, ITEM_METRICS, MAX_FOLDER_NAME, MAX_QTY, PORTFOLIO_METRICS, QuantityLimit, Store, net_cents,
 )
 from .export import holdings_csv, sales_csv
+from .inline import Cards
 from .notify import current_value, language, valid_zone, zone
 from .prices import InventoryService, PriceService, SteamBusy
 from .settings import AppSettings
@@ -58,7 +59,7 @@ SHARES_KEPT_PER_USER = 3
 MAX_BROADCAST = 4000
 # Item pictures for the share card, fetched here: Steam's CDN sends no CORS
 # header, so the app can't draw them on a canvas it then exports.
-ICON_URL = "https://community.fastly.steamstatic.com/economy/image/{icon}/96fx96f"
+ICON_URL = "https://community.fastly.steamstatic.com/economy/image/{icon}/{size}fx{size}f"
 ICONS_PER_MINUTE = 60
 MAX_ICON = 256 * 1024
 MAX_ICONS_CACHED = 500
@@ -118,6 +119,8 @@ ICON_FETCH = web.AppKey("icon_fetch", object)
 ICON_LIMITER = web.AppKey("icon_limiter", object)
 # icon -> (content type, bytes)
 ICONS = web.AppKey("icons", dict)
+# inline mode's price cards (see inline.py)
+CARDS = web.AppKey("cards", Cards)
 # user id -> monotonic time we last wrote their last_seen (at most once a minute)
 TOUCHED = web.AppKey("touched", dict)
 TOUCH_EVERY = 60
@@ -257,6 +260,7 @@ def _portfolio_json(request: web.Request) -> dict:
         "sync": store.pending_sync(request[USER_ID]),
         "folders": store.folders(request[USER_ID]),
         "bot": getattr(request.app[BOT], "username", None),  # for the share card
+        "inline": bool(getattr(request.app[BOT], "supports_inline", False)),  # "@bot item" works
     }
 
 
@@ -305,7 +309,9 @@ async def quote(request: web.Request) -> web.Response:
         cached = store.price(hash_name)
         cents = None if cached is None else cached[0]
     holding = store.holding(request[USER_ID], hash_name)
+    name, icon = store.item(hash_name) or (hash_name, None)
     return web.json_response({
+        "name": name, "icon": icon,  # for an item opened by a link, with nothing else known
         "price": _money(cents),
         "holding": _holding_json(holding) if holding else None,
         "liquidity": _liquidity_json(*store.liquidity(hash_name)),
@@ -653,10 +659,10 @@ async def icon(request: web.Request) -> web.Response:
     return web.Response(body=hit[1], content_type=hit[0], headers={"Cache-Control": "private, max-age=86400"})
 
 
-async def fetch_icon(name: str) -> tuple[str, bytes]:
+async def fetch_icon(name: str, size: int = 96) -> tuple[str, bytes]:
     timeout = aiohttp.ClientTimeout(total=8)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(ICON_URL.format(icon=name)) as resp:
+        async with session.get(ICON_URL.format(icon=name, size=size)) as resp:
             kind = resp.headers.get("Content-Type", "").split(";")[0]
             if resp.status != 200 or kind not in ("image/png", "image/jpeg", "image/webp"):
                 raise ValueError(f"HTTP {resp.status} {kind}")
@@ -1098,6 +1104,7 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app[ICON_FETCH] = icon_fetch or fetch_icon
     app[ICON_LIMITER] = RateLimiter(ICONS_PER_MINUTE)
     app[ICONS] = {}
+    app[CARDS] = Cards(settings, store, prices, icon_fetch=app[ICON_FETCH], bot=bot)
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)
@@ -1120,6 +1127,7 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_post("/api/export", export)
     app.router.add_post("/api/share", share)
     app.router.add_get("/share/{name}", shared_picture)
+    app.router.add_get("/card/{kind}/{name}", app[CARDS].handle)
     app.router.add_get("/api/icon", icon)
     app.router.add_get("/api/admin/broadcast", admin_broadcast)
     app.router.add_post("/api/admin/broadcast", start_broadcast)

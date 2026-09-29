@@ -495,13 +495,13 @@ def test_api_add_edit_delete_flow(tmp_path):
         assert body.pop("version") and body.pop("is_admin") is False
         assert body == {"currency": "UAH", "price_kind": "sell", "updated_at": None, "items": [],
                         "watching": [], "can_notify": False, "offer_digest": False, "sync": None, "folders": [], "bot": None,
-                        "realized": {"count": 0, "proceeds": 0.0, "cost": None, "profit": None, "unknown": 0}}
+                        "inline": False, "realized": {"count": 0, "proceeds": 0.0, "cost": None, "profit": None, "unknown": 0}}
 
         found = await (await client.get("/api/search", params={"q": "breakout"}, headers=auth())).json()
         assert found["results"] == [{"hash_name": CASE, "name": CASE, "icon": "abc", "held": False}]
 
         q = await (await client.get("/api/quote", params={"hash_name": CASE}, headers=auth())).json()
-        assert q == {"price": 4.64, "holding": None,
+        assert q == {"name": CASE, "icon": "abc", "price": 4.64, "holding": None,
                      "liquidity": {"buy_orders": None, "sell_listings": None,
                                    "spread": pytest.approx(2 * (464 - 421) / (464 + 421))}}
 

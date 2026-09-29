@@ -2,3 +2,4 @@ gspread>=6.1,<7
 requests>=2.31
 tomli>=2; python_version < "3.11"
 aiohttp>=3.9
+pillow>=10

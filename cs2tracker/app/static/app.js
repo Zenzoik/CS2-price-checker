@@ -163,7 +163,8 @@
       err_no_write_access: "Allow the bot to message you (or press Start in the bot chat), then try again.",
       askWriteAccess: "The bot needs your permission to send you the file. Allow it?", exporting: "Sending…", err_unavailable: "Not available right now.",
       err_broadcast_running: "A broadcast is still going out.",
-      act_export: "Exports", act_share: "Shares",
+      act_export: "Exports", act_share: "Shares", act_inline: "Inline searches (users)", act_inline_sent: "Inline cards sent",
+      inlineHint: "Tip: in any chat, type @{bot} and an item's name, and the bot sends its price card.",
     },
     ru: {
       addItem: "Добавить предмет", add: "Добавить", save: "Сохранить", boughtMore: "Докупить", remove: "Убрать",
@@ -315,7 +316,8 @@
       err_no_write_access: "Разрешите боту писать вам (или нажмите «Старт» в чате с ботом) и попробуйте снова.",
       askWriteAccess: "Боту нужно разрешение, чтобы прислать вам файл. Разрешить?", exporting: "Отправляем…", err_unavailable: "Сейчас недоступно.",
       err_broadcast_running: "Предыдущая рассылка ещё идёт.",
-      act_export: "Экспорты", act_share: "Поделились",
+      act_export: "Экспорты", act_share: "Поделились", act_inline: "Инлайн-поиск (польз.)", act_inline_sent: "Отправлено карточек",
+      inlineHint: "Совет: в любом чате напишите @{bot} и название предмета — бот отправит карточку с ценой.",
     },
     uk: {
       addItem: "Додати предмет", add: "Додати", save: "Зберегти", boughtMore: "Докупити", remove: "Прибрати",
@@ -467,7 +469,8 @@
       err_no_write_access: "Дозвольте боту писати вам (або натисніть «Старт» у чаті з ботом) і спробуйте знову.",
       askWriteAccess: "Боту потрібен дозвіл, щоб надіслати вам файл. Дозволити?", exporting: "Надсилаємо…", err_unavailable: "Зараз недоступно.",
       err_broadcast_running: "Попередня розсилка ще триває.",
-      act_export: "Експорти", act_share: "Поділилися",
+      act_export: "Експорти", act_share: "Поділилися", act_inline: "Інлайн-пошук (корист.)", act_inline_sent: "Надіслано карток",
+      inlineHint: "Порада: у будь-якому чаті напишіть @{bot} і назву предмета — бот надішле картку з ціною.",
     },
   };
   const userLang = ((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code)
@@ -805,12 +808,28 @@
 
   let opened = false;
 
+  // ?item=<hash name>: opened from a price card sent in inline mode (via the bot).
+  let linkedItem = (() => {
+    try { return new URLSearchParams(location.search).get("item"); } catch (e) { return null; }
+  })();
+  if (linkedItem) {
+    // Opened once: a reload (e.g. into a new version) lands on Home.
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) { /* cosmetic */ }
+  }
+
   async function loadPortfolio() {
     try {
       const p = await api(opened ? "/api/portfolio" : "/api/portfolio?open=1");
       opened = true;
       setPortfolio(p);
       reloadIfOutdated(p.version);
+      if (linkedItem && state.screen === "home") {
+        const name = linkedItem;
+        linkedItem = null;
+        const held = heldItem(name);
+        showItem(held || { hash_name: name, name, icon: null }, held ? "edit" : "add", null, { quiet: true });
+        return;
+      }
     } catch (e) {
       if (state.portfolio) state.stale = e;
       else state.loadError = e;
@@ -2117,6 +2136,11 @@
           haptic.tap();
           showSell(held, null, reopen);
         } }, h("span", { "aria-hidden": "true" }, "💰 "), t("sold")),
+        canShareInline() && h("button", { type: "button", class: "chip", onclick: () => {
+          haptic.tap();
+          // Closes the app and lets the user pick a chat, with "@bot <item>" typed in.
+          call(() => tg.switchInlineQuery(item.hash_name, ["users", "groups", "channels"]), "6.7");
+        } }, h("span", { "aria-hidden": "true" }, "📤 "), t("share")),
         !held && h("button", { type: "button", class: `chip${watched ? " on" : ""}`, "aria-pressed": String(watched), onclick: async () => {
           haptic.tap();
           try {
@@ -2137,6 +2161,10 @@
     // Fresh each time: an alert may have fired, or "now" moved, since the last look.
     loadAlerts().then(() => { if (app.contains(actions)) render(); }).catch(() => {});
     return { actions, list };
+  }
+
+  function canShareInline() {
+    return !!(state.portfolio && state.portfolio.inline) && nativeUi && tg.isVersionAtLeast("6.7");
   }
 
   // Offered once, after the first import or the third item.
@@ -2889,6 +2917,7 @@
         t("shareTitle")),
       h("p", { class: "note" }, t("shareHint")),
       box,
+      state.portfolio.inline && state.portfolio.bot && h("p", { class: "note spaced" }, t("inlineHint", { bot: state.portfolio.bot })),
     ]);
     buttons();
     redraw();
@@ -2976,7 +3005,7 @@
       h("div", { class: "row-main" }, label), h("div", { class: "row-side num" }, value));
 
     const actions = ["open", "search", "inventory", "import", "add", "edit", "remove", "sell", "watch", "alert", "digest",
-      "export", "share", "bot"]
+      "export", "share", "inline", "inline_sent", "bot"]
       .filter((k) => d.actions_7d[k]);
     const p = d.prices;
 
@@ -3056,6 +3085,7 @@
     let priceError = null;
 
     const now = h("div", { class: "item-now hint num" });
+    const picture = thumb(item.icon, 256);
     const insights = h("div", { class: "item-insights num" });
     const marketDepth = h("div", { class: "market-depth num" });
     const steamLink = h("a", {
@@ -3176,7 +3206,7 @@
       () => showItem(heldItem(item.hash_name) || item, editing ? "edit" : "add", backTo, { quiet: true }));
     mount([
       h("section", { class: "item-head" },
-        thumb(item.icon, 256),
+        picture,
         h("div", { class: "item-name" }, steamLink),
         now,
         insights,
@@ -3201,6 +3231,9 @@
       api(`/api/quote?hash_name=${encodeURIComponent(item.hash_name)}`).then((data) => {
         price = data.price;
         liquidity = data.liquidity;
+        // Opened from a link: only the hash name was known.
+        if (!item.icon && data.icon && app.contains(picture)) picture.replaceWith(thumb(data.icon, 256));
+        if (data.name && data.name !== item.name && steamLink.firstChild) steamLink.firstChild.textContent = data.name;
       }).catch((e) => {
         price = null;
         priceError = e;

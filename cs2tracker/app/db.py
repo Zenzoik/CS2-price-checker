@@ -1007,6 +1007,80 @@ class Store:
             "change_ratio": growth - 1 if len(points) > 1 else None,
         }
 
+    # -- inline mode -----------------------------------------------------------
+
+    def search_items(self, words: list[str], limit: int = 20) -> list[str]:
+        """Hash names from the catalogue whose name has every word (any case).
+
+        The whole phrase as the name comes first, then names that start with it,
+        then what most users hold. No Steam request: this is what an inline
+        query shows while the user is still typing.
+        """
+        words = [w for w in words if w]
+        if not words:
+            return []
+        esc = lambda w: w.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")  # noqa: E731
+        where = " AND ".join("(i.name LIKE ? ESCAPE '\\' OR i.hash_name LIKE ? ESCAPE '\\')" for _ in words)
+        args: list = [f"%{esc(w)}%" for w in words for _ in (0, 1)]
+        phrase = " ".join(words).lower()
+        rows = self.conn.execute(
+            f"""SELECT i.hash_name FROM items i
+                LEFT JOIN (SELECT hash_name, COUNT(*) AS holders FROM holdings GROUP BY hash_name) h
+                  ON h.hash_name = i.hash_name
+                WHERE {where}
+                ORDER BY lower(i.name) = ? DESC, lower(i.name) LIKE ? ESCAPE '\\' DESC,
+                         COALESCE(h.holders, 0) DESC, length(i.name), i.name
+                LIMIT ?""",
+            args + [phrase, f"{esc(phrase)}%", limit],
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def popular_items(self, limit: int = 10) -> list[str]:
+        """What most users hold: shown to someone with nothing of their own yet."""
+        rows = self.conn.execute(
+            "SELECT hash_name FROM holdings GROUP BY hash_name ORDER BY COUNT(*) DESC, SUM(qty) DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def known_names(self) -> list[str]:
+        """Every item name the service has seen (to resolve a short key back to one)."""
+        return [r[0] for r in self.conn.execute("SELECT hash_name FROM items UNION SELECT hash_name FROM prices")]
+
+    def market_snapshot(self, hash_name: str, now: float | None = None, days: int = 30) -> dict:
+        """An item's price with the UTC-day closes it is compared to, for a card or an inline result.
+
+        `closes` covers the last `days` days (price found only), oldest first;
+        today's live price stands in for today's close.
+        """
+        as_of = time.time() if now is None else now
+        row = self.conn.execute(
+            """SELECT COALESCE(i.name, n.hash_name) AS name, i.icon, p.cents, p.updated_at, p.checked_at,
+                      p.buy_orders, p.sell_listings
+               FROM (SELECT ? AS hash_name) n
+               LEFT JOIN items i ON i.hash_name = n.hash_name
+               LEFT JOIN prices p ON p.hash_name = n.hash_name""",
+            (hash_name,),
+        ).fetchone()
+        today = self._utc_day(as_of)
+        history = dict(self.conn.execute(
+            "SELECT day, cents FROM price_history WHERE hash_name = ? AND day >= ? AND day < ? ORDER BY day",
+            (hash_name, self._utc_day(as_of - days * 86400), today),
+        ).fetchall())
+        closes = [c for c in history.values() if c is not None]
+        if row["cents"] is not None:
+            closes.append(row["cents"])
+
+        def change(ago: int) -> float | None:
+            before = history.get(self._utc_day(as_of - ago * 86400))
+            return row["cents"] / before - 1 if row["cents"] is not None and before else None
+        return {
+            "hash_name": hash_name, "name": row["name"], "icon": row["icon"], "cents": row["cents"],
+            "updated_at": row["updated_at"], "checked_at": row["checked_at"],
+            "buy_orders": row["buy_orders"], "sell_listings": row["sell_listings"],
+            "change_24h": change(1), "change_7d": change(7), "change_30d": change(30), "closes": closes,
+        }
+
     # -- watchlist -----------------------------------------------------------
 
     def watching(self, user_id: int, now: float | None = None) -> list[dict]:

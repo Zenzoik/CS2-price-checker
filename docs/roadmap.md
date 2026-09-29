@@ -11,6 +11,7 @@ Research that led to some of these items, including options we rejected for now,
 | 2 | Let the bot come to the user | Threshold alerts · Watchlist · Daily / weekly digest |
 | 3 | Track the whole life of an investment | Sales and realized profit · Inventory auto-sync |
 | 4 | Growth and convenience | Share card · Folders / several accounts · Export · Broadcast |
+| 5 | Reach beyond the app | Inline mode with price cards |
 | Backlog | Decide from feedback | Instant estimates after an import (third-party prices) |
 
 ---
@@ -163,6 +164,19 @@ These are independent of each other. Pick them from feedback.
   - A cursor in the database makes it resume after a restart. The admin screen shows the audience, progress and the last result, and can stop a broadcast. Only one runs at a time, and a private bot skips users it doesn't allow.
 
 ---
+
+## Phase 5: reach beyond the app
+
+### 5.1 Inline mode (M) — implemented
+- **Why:** prices are most often asked about in chats ("how much is Kilowatt now?"). Answering there, with a card that links back, brings the app to people who don't use it yet.
+- **What:** `@bot <item>` in any chat lists items with price, 24 h / 7 d change and, privately, how many the sender holds. The chosen one is sent as a message with a price card and a "Track the price" button. An empty query offers the sender's portfolio (percent only) and their items; newcomers see the most held items.
+- **Decisions:**
+  - **Articles, not photo results.** The list shows readable text (a photo grid would show only pictures), and the card is the message's large link preview (`link_preview_options.show_above_text`). Photo results would also hit Telegram for iOS drawing the sender's copy from the thumbnail (see 4.1).
+  - **Server-side cards.** Telegram fetches the card by URL when the message goes out, with no app around to draw it, so the server renders it with Pillow and a bundled, subset Inter font. Card URLs are signed (HMAC of the bot token) and change with the price and every hour, so Telegram's preview cache never shows an old price for long.
+  - **Typing must feel instant.** A query first searches the service's own item catalogue; Steam's search runs only when that finds few, within the user's Steam budget, a shared 20 requests a minute for inline mode and 4 s. A newer query from the same user cancels the one still running. Prices come from the refresh's cache; a card for an item nobody tracks asks Steam once when it is drawn, and the first uncached results are priced in the background for the next keystroke.
+  - **Privacy.** What the chat sees never includes the sender's quantities or amounts; the portfolio card is percent only, like the app's default share card.
+  - **Deep links, not `startapp`:** the bot has no Main Mini App, so the card's button is `t.me/<bot>?start=it_<key>`; the bot answers with a button that opens the app on that item (`?item=`).
+- **Setup:** `/setinline` in @BotFather (and `/setinlinefeedback` for the "cards sent" statistic).
 
 ## Backlog: decide from user feedback
 
