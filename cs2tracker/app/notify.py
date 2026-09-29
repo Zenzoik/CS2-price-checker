@@ -104,12 +104,21 @@ def _number(value: float, lang: str, digits: int) -> str:
     return ("−" if value < 0 else "") + text
 
 
-def money(cents: int, currency: str, lang: str, sign: bool = False) -> str:
+def money(cents: int, currency: str, lang: str, sign: bool = False, whole: bool = False) -> str:
     units = cents / 100
-    body = _number(abs(units), lang, 0 if abs(units) >= 1000 else 2)
+    body = _number(abs(units), lang, 0 if whole or abs(units) >= 1000 else 2)
     symbol = SYMBOLS.get(currency, currency)
     text = f"{symbol}{body}" if lang == "en" and currency in PREFIX_SYMBOLS else f"{body} {symbol}"
     return (("+" if cents > 0 else "−" if cents < 0 else "") if sign else ("−" if cents < 0 else "")) + text
+
+
+def approx_money(cents: int, currency: str, lang: str) -> str:
+    """An estimate, without false precision: two significant digits from 10 up ("1 200 ₴", "36 ₴")."""
+    units = cents / 100
+    if units < 10:
+        return money(cents, currency, lang)
+    step = 10 ** max(0, len(str(int(units))) - 2)
+    return money(round(units / step) * step * 100, currency, lang, whole=True)
 
 
 def percent(ratio: float, lang: str) -> str:

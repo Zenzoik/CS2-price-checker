@@ -30,6 +30,14 @@ MAX_CONSECUTIVE_ERRORS = 3
 # A source Steam rate-limited sits out this long (some hosting IPs are limited
 # on priceoverview for hours; no point asking every pass).
 SOURCE_COOLDOWN = 900
+# Beyond what users hold, each pass prices a few items others may look up
+# (inline mode): the ones asked for just now, then catalogue items no estimate
+# covers, each once a week. Spare Steam capacity only: the pass ends with them.
+WANTED_PER_PASS = 10
+WARM_PER_PASS = 20
+WARM_EVERY = 7 * 86400
+MAX_WANTED = 200
+
 # How long a user request may wait for Steam before giving up.
 INTERACTIVE_WAIT = 10.0
 # An item Steam just said it doesn't know isn't asked about again this soon
@@ -110,6 +118,7 @@ class PriceService:
         self._gate = SteamGate()
         self._lock = self._gate.lock
         self._searches: dict[str, tuple[float, list[SearchResult]]] = {}
+        self._wanted: dict[str, None] = {}  # asked for by inline mode, oldest first
         self._not_found: dict[str, float] = {}  # hash name -> when Steam said so
         self._wake = asyncio.Event()
         # Set after a pass that stored prices: alerts are checked then.
@@ -142,10 +151,11 @@ class PriceService:
 
     def _search_sync(self, query: str) -> list[SearchResult]:
         # Cases and capsules first: "breakout" should find the case, not stickers.
-        results = self.market.search(query, containers_only=True)
+        # A user is waiting and the Steam lock is held: a 429 fails at once, no back-off.
+        results = self.market.search(query, containers_only=True, max_retries=0)
         if len(results) < 3:
             seen = {r.hash_name for r in results}
-            more = self.market.search(query, containers_only=False)
+            more = self.market.search(query, containers_only=False, max_retries=0)
             results = results + [r for r in more if r.hash_name not in seen]
         return results
 
@@ -204,6 +214,7 @@ class PriceService:
         """
         stale_before = self._clock() - self.max_age * 0.9
         due = [name for name, checked in self.store.tracked() if checked is None or checked < stale_before]
+        due += self._extras(set(due))
         if not due:
             self.last_pass = self._clock()
             return 0
@@ -220,6 +231,23 @@ class PriceService:
             self.passed.set()
         log.info("Refreshed %d/%d price(s)", done, len(due))
         return done
+
+    def want(self, names: list[str]) -> None:
+        """Prices someone just looked for (an inline result without one): next pass, which starts now."""
+        for name in names:
+            if name not in self._wanted and len(self._wanted) < MAX_WANTED and not self.fresh_price(name):
+                self._wanted[name] = None
+        if self._wanted:
+            self.wake()
+
+    def _extras(self, taken: set[str]) -> list[str]:
+        extras = []
+        for name in list(self._wanted)[:WANTED_PER_PASS]:
+            del self._wanted[name]  # asked once; a failure is recorded as a check like any other
+            if name not in taken:
+                extras.append(name)
+        warm = self.store.catalog_to_warm(self._clock() - WARM_EVERY, WARM_PER_PASS)
+        return extras + [n for n in warm if n not in taken and n not in extras]
 
     def _overview_fetch(self, name: str):
         return self._overview.price_overview(name, self.fetcher.currency)

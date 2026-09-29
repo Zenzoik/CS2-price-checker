@@ -216,7 +216,8 @@ class SteamMarket:
 
     # -- public API ---------------------------------------------------------
 
-    def search(self, query: str, *, containers_only: bool = True, count: int = 10) -> list[SearchResult]:
+    def search(self, query: str, *, containers_only: bool = True, count: int = 10,
+               max_retries: int | None = None) -> list[SearchResult]:
         params: dict[str, object] = {
             "query": query,
             "appid": CS2_APPID,
@@ -228,7 +229,8 @@ class SteamMarket:
         if containers_only:
             params[f"category_{CS2_APPID}_Type[]"] = CONTAINER_TAG
         # Interactive: fail fast instead of backing off for minutes.
-        data = self._get_json(f"{MARKET_URL}/search/render/", params, max_retries=min(self.max_retries, 2))
+        retries = min(self.max_retries, 2) if max_retries is None else max_retries
+        data = self._get_json(f"{MARKET_URL}/search/render/", params, max_retries=retries)
         try:
             results = []
             for r in (data or {}).get("results") or []:

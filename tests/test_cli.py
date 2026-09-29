@@ -141,7 +141,7 @@ def test_add_stops_on_exit_and_falls_back_to_all_items(monkeypatch):
     searched = []
 
     class Market:
-        def search(self, query, containers_only=True):
+        def search(self, query, containers_only=True, **kw):
             searched.append((query, containers_only))
             return [] if containers_only else [SearchResult("AWP | Asiimov (Field-Tested)", "x", 1.0, 5)]
 

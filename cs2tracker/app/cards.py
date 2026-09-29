@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from .notify import MONTHS, percent
+from .notify import approx_money as _approx_money
 from .notify import money as _money
 
 W, H = 1200, 630
@@ -29,17 +30,17 @@ PANEL = (255, 255, 255, 16)
 
 TEXTS = {
     "en": {"market": "CS2 · Steam Market", "sell": "Lowest Steam listing", "buy": "Top Steam buy order",
-           "net": "you'd get {v}", "no_price": "No listings right now", "day": "24h", "week": "7d", "month": "30d",
+           "net": "you'd get {v}", "no_price": "No listings right now", "estimate": "Estimate from Steam's sale median", "day": "24h", "week": "7d", "month": "30d",
            "listings": "For sale: {n}", "orders": "Buy orders: {n}", "no_history": "Price history starts once the item is tracked",
            "portfolio": "CS2 portfolio", "profit": "Profit on the price paid", "items": "{n} items",
            "footer": "Track your CS2 items in Telegram"},
     "ru": {"market": "CS2 · Торговая площадка Steam", "sell": "Мин. цена в Steam", "buy": "Макс. заявка в Steam",
-           "net": "после комиссии {v}", "no_price": "Сейчас нет предложений", "day": "24 ч", "week": "7 д", "month": "30 д",
+           "net": "после комиссии {v}", "no_price": "Сейчас нет предложений", "estimate": "Оценка по медиане продаж в Steam", "day": "24 ч", "week": "7 д", "month": "30 д",
            "listings": "В продаже: {n}", "orders": "Заявок: {n}", "no_history": "История цен появится, когда предмет начнут отслеживать",
            "portfolio": "Портфель CS2", "profit": "Прибыль к цене покупки", "items": "предметов: {n}",
            "footer": "Следите за своими предметами CS2 в Telegram"},
     "uk": {"market": "CS2 · Торговий майданчик Steam", "sell": "Мін. ціна в Steam", "buy": "Макс. заявка в Steam",
-           "net": "після комісії {v}", "no_price": "Зараз немає пропозицій", "day": "24 год", "week": "7 д", "month": "30 д",
+           "net": "після комісії {v}", "no_price": "Зараз немає пропозицій", "estimate": "Оцінка за медіаною продажів у Steam", "day": "24 год", "week": "7 д", "month": "30 д",
            "listings": "У продажу: {n}", "orders": "Заявок: {n}", "no_history": "Історія цін з'явиться, коли предмет почнуть відстежувати",
            "portfolio": "Портфель CS2", "profit": "Прибуток до ціни купівлі", "items": "предметів: {n}",
            "footer": "Стежте за своїми предметами CS2 в Telegram"},
@@ -59,6 +60,7 @@ class ItemCard:
     orders: int | None = None
     icon: bytes | None = None
     day: tuple[int, int, int] | None = None  # (year, month, day) the price is from
+    estimate_cents: int | None = None  # when no exact price: an approximate one, shown with "≈"
 
 
 @dataclass
@@ -74,6 +76,9 @@ def money(cents: int, currency: str, lang: str) -> str:
     Russian and Ukrainian use all but vanishes at poster sizes ("1313 ₴")."""
     return _money(cents, currency, lang).replace("\u202f", "\u00a0")
 
+
+def approx_money(cents: int, currency: str, lang: str) -> str:
+    return _approx_money(cents, currency, lang).replace("\u202f", "\u00a0")
 
 
 def _font(weight: int, size: int) -> ImageFont.FreeTypeFont:
@@ -180,7 +185,12 @@ def item_card(card: ItemCard, lang: str, bot: str | None) -> bytes:
         draw.text((x, y), line, font=name_font, fill=FG, anchor="lt")
         y += 54
     y += 12
-    if card.cents is None:
+    if card.cents is None and card.estimate_cents is not None:
+        draw.text((x, y), "≈ " + approx_money(card.estimate_cents, card.currency, lang), font=_font(800, 80), fill=FG, anchor="lt")
+        y += 92
+        draw.text((x, y), _fit(draw, t["estimate"], _font(400, 26), width), font=_font(400, 26), fill=HINT, anchor="lt")
+        y += 42
+    elif card.cents is None:
         draw.text((x, y), t["no_price"], font=_font(800, 56), fill=HINT, anchor="lt")
         y += 76
     else:

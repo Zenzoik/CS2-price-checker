@@ -48,7 +48,7 @@ class FakeMarket:
         return Quote(hash_name, "UAH", book[0], book[1], "orderbook",
                      *(book[2:4] if len(book) >= 4 else (None, None)))
 
-    def search(self, query, containers_only=True):
+    def search(self, query, containers_only=True, **kw):
         self.calls.append(("search", query, containers_only))
         return list(self.containers if containers_only else self.everything)
 

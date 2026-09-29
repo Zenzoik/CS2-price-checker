@@ -29,8 +29,9 @@ from urllib.parse import quote, urlencode
 from aiohttp import web
 
 from ..steam import SteamError
+from .catalog import Catalog
 from .db import Store, net_cents
-from .notify import language, money, percent
+from .notify import approx_money, language, money, percent
 from .prices import PriceService
 
 try:  # the cards need Pillow; without it results still work, only without the picture
@@ -43,21 +44,23 @@ log = logging.getLogger(__name__)
 MARKET_URL = "https://steamcommunity.com/market/listings/730/"
 ICON_URL = "https://community.fastly.steamstatic.com/economy/image/{icon}/96fx96f"
 MAX_RESULTS = 20
-STEAM_SEARCH_WAIT = 4.0     # an inline answer is waited for; better fewer results than none
+STEAM_SEARCH_WAIT = 2.5     # only when the catalogue knows nothing; an answer is being waited for
 CARD_QUOTE_WAIT = 6.0       # Telegram fetches the card when the message is sent
 CACHE_TIME = 30             # seconds Telegram may reuse an answer: prices move, keep it short
+CACHE_TIME_WAITING = 5      # ... when some prices are being fetched for it just now
 # Steam requests inline mode may make per minute, all users together: the price
 # refresh and the app's own users come first.
 INLINE_STEAM_PER_MINUTE = 20
-PREFETCH = 2                # uncached prices fetched in the background per query
 STALE = 3 * 3600            # older prices on a card are asked for again
 RENDERED_CACHE = 200
 ICONS_CACHE = 300
 LOG_EVERY = 600             # one "inline" usage event per user per 10 minutes
+FRESH = 36 * 3600           # an older exact price is shown with its age
 
 TEXTS = {
     "en": {
-        "day": "24h", "week": "7d", "price_later": "price on the card", "no_price": "no listings",
+        "day": "24h", "week": "7d", "price_later": "price on the card", "no_price": "no listings", "estimate": "estimate",
+        "hours_ago": "{n}h ago", "days_ago": "{n}d ago",
         "you_have": "You have {n}", "for_sale": "For sale: {n}", "track": "📈 Track the price",
         "steam": "On Steam", "open_app": "My portfolio", "portfolio": "My CS2 portfolio",
         "portfolio_desc": "{ratio} profit · {n} items · no amounts", "portfolio_items": "{n} items · no amounts",
@@ -65,7 +68,8 @@ TEXTS = {
         "item_intro": "{name}\n\nOpen it in the tracker to follow the price or add it to your portfolio.",
     },
     "ru": {
-        "day": "24 ч", "week": "7 д", "price_later": "цена на карточке", "no_price": "нет предложений",
+        "day": "24 ч", "week": "7 д", "price_later": "цена на карточке", "no_price": "нет предложений", "estimate": "оценка",
+        "hours_ago": "{n} ч назад", "days_ago": "{n} дн. назад",
         "you_have": "У вас {n} шт.", "for_sale": "В продаже: {n}", "track": "📈 Следить за ценой",
         "steam": "В Steam", "open_app": "Мой портфель", "portfolio": "Мой портфель CS2",
         "portfolio_desc": "прибыль {ratio} · предметов: {n} · без сумм", "portfolio_items": "предметов: {n} · без сумм",
@@ -73,7 +77,8 @@ TEXTS = {
         "item_intro": "{name}\n\nОткройте в трекере, чтобы следить за ценой или добавить в портфель.",
     },
     "uk": {
-        "day": "24 год", "week": "7 д", "price_later": "ціна на картці", "no_price": "немає пропозицій",
+        "day": "24 год", "week": "7 д", "price_later": "ціна на картці", "no_price": "немає пропозицій", "estimate": "оцінка",
+        "hours_ago": "{n} год тому", "days_ago": "{n} дн. тому",
         "you_have": "У вас {n} шт.", "for_sale": "У продажу: {n}", "track": "📈 Стежити за ціною",
         "steam": "У Steam", "open_app": "Мій портфель", "portfolio": "Мій портфель CS2",
         "portfolio_desc": "прибуток {ratio} · предметів: {n} · без сум", "portfolio_items": "предметів: {n} · без сум",
@@ -109,8 +114,10 @@ class Budget:
 class Cards:
     """Signed card URLs, and the pictures behind them."""
 
-    def __init__(self, settings, store: Store, prices: PriceService, icon_fetch, bot=None, budget: Budget | None = None):
+    def __init__(self, settings, store: Store, prices: PriceService, icon_fetch, bot=None, budget: Budget | None = None,
+                 catalog: Catalog | None = None):
         self.settings = settings
+        self.catalog = catalog
         self.store = store
         self.prices = prices
         self.icon_fetch = icon_fetch  # (icon, size) -> (content type, bytes)
@@ -204,6 +211,7 @@ class Cards:
         stamp = snap["updated_at"]
         day = time.gmtime(stamp)[:3] if stamp else None
         card = render.ItemCard(
+            estimate_cents=None if snap["cents"] is not None or self.catalog is None else self.catalog.estimate(hash_name),
             name=snap["name"], currency=self.store.currency, kind=self.settings.price, cents=snap["cents"],
             net_cents=None if snap["cents"] is None else net_cents(snap["cents"]),
             changes=[("day", snap["change_24h"]), ("week", snap["change_7d"]), ("month", snap["change_30d"])],
@@ -251,9 +259,11 @@ def portfolio_summary(store: Store, user_id: int) -> dict | None:
 
 
 class InlineMode:
-    def __init__(self, settings, store: Store, prices: PriceService, cards: Cards, bot, limiter=None):
+    def __init__(self, settings, store: Store, prices: PriceService, cards: Cards, bot, limiter=None,
+                 catalog=None):
         self.settings = settings
         self.store = store
+        self.catalog = catalog if catalog is not None else (cards.catalog or Catalog(store))
         self.prices = prices
         self.cards = cards
         self.bot = bot
@@ -276,8 +286,11 @@ class InlineMode:
         self._usage(user)
         text = " ".join(str(query.get("query") or "").split())[:100]
         results = await self.results(user_id, text, lang)
+        # Some prices are being fetched right now: let the same query ask again in a moment.
+        waiting = any(r.get("description") == TEXTS[lang]["price_later"] for r in results)
         await self.bot.call(
-            "answerInlineQuery", inline_query_id=query["id"], results=results, cache_time=CACHE_TIME,
+            "answerInlineQuery", inline_query_id=query["id"], results=results,
+            cache_time=CACHE_TIME_WAITING if waiting else CACHE_TIME,
             is_personal=True, button={"text": TEXTS[lang]["open_app"], "web_app": {"url": self.settings.public_url}},
         )
 
@@ -306,21 +319,28 @@ class InlineMode:
         else:
             names = await self._search(user_id, text)
         shown = list(dict.fromkeys(names))[:MAX_RESULTS - len(out)]
-        out += [self._item_result(name, held.get(name), lang) for name in shown]
-        self._prefetch(user_id, shown[:6])
-        return out
+        items = [self._item_result(name, held.get(name), lang) for name in shown]
+        # Nothing to show for some (rare items): Steam is asked in the refresh's
+        # next pass, which starts now, so they have a price seconds later.
+        self.prices.want([name for name, (_, priced) in zip(shown, items) if not priced][:5])
+        return out + [result for result, _ in items]
 
     async def _search(self, user_id: int, text: str) -> list[str]:
-        local = self.store.search_items(text.split(), MAX_RESULTS)
-        if len(text) < 3 or len(local) >= 10:
-            return local
+        """The catalogue, in memory: every market item, answered in milliseconds.
+
+        Steam's search is asked only when the catalogue has nothing (a brand-new
+        item, or the catalogue couldn't be downloaded yet), and briefly.
+        """
+        found = self.catalog.search(text, MAX_RESULTS)
+        if found or len(text) < 3:
+            return found
         try:
-            found = await asyncio.wait_for(self.prices.search(text, self._charge(user_id)), STEAM_SEARCH_WAIT)
+            results = await asyncio.wait_for(self.prices.search(text, self._charge(user_id)), STEAM_SEARCH_WAIT)
         except (NoBudget, SteamError, asyncio.TimeoutError, web.HTTPException) as e:
-            log.info("Inline search %r without Steam: %r", text, e)
-            return local
-        # Catalogue hits have every typed word; Steam adds the names we haven't seen.
-        return list(dict.fromkeys(local + [r.hash_name for r in found]))
+            log.info("Inline search %r found nothing, and Steam didn't help: %r", text, e)
+            return []
+        self.catalog.remember([r.hash_name for r in results])
+        return [r.hash_name for r in results]
 
     def _charge(self, user_id: int):
         """Bills both the user's Steam budget (shared with the app) and inline mode's."""
@@ -332,37 +352,26 @@ class InlineMode:
                 self.limiter.take(user_id, cost)
         return charge
 
-    def _prefetch(self, user_id: int, names: list[str]) -> None:
-        """Prices for the first results nobody tracks, so the next keystroke shows them.
-
-        Billed to inline mode's budget only: a nicety must not use up the
-        user's own Steam budget, which the app shares.
-        """
-        missing = [n for n in names if self.store.price(n) is None][:PREFETCH]
-        for name in missing:
-            task = asyncio.ensure_future(self._quietly(self.prices.quote(name, self.cards.budget.charge)))
-            self._background.add(task)
-            task.add_done_callback(self._background.discard)
-
-    @staticmethod
-    async def _quietly(coro) -> None:
-        try:
-            await coro
-        except (NoBudget, SteamError, web.HTTPException):
-            pass
-        except Exception:
-            log.exception("Inline price prefetch failed")
-
     # -- results ---------------------------------------------------------------
 
-    def _item_result(self, hash_name: str, holding, lang: str) -> dict:
+    def _item_result(self, hash_name: str, holding, lang: str) -> tuple[dict, bool]:
+        """(the result, whether it shows a price)."""
         t = TEXTS[lang]
         snap = self.store.market_snapshot(hash_name)
         currency = self.store.currency
         moves = [f"{t[key]} {percent(ratio, lang)}"
                  for key, ratio in (("day", snap["change_24h"]), ("week", snap["change_7d"])) if ratio is not None]
-        if snap["cents"] is not None:
+        age = time.time() - snap["updated_at"] if snap["updated_at"] else None
+        fresh = snap["cents"] is not None and age is not None and age < FRESH
+        estimate = None if snap["cents"] is not None else self.catalog.estimate(hash_name)
+        if fresh:
             head = [money(snap["cents"], currency, lang)] + moves
+        elif snap["cents"] is not None:  # priced once (e.g. a rare item warmed weekly): say when
+            hours = int(age // 3600) if age is not None else 0
+            head = [money(snap["cents"], currency, lang),
+                    t["hours_ago"].format(n=hours) if hours < 48 else t["days_ago"].format(n=hours // 24)]
+        elif estimate is not None:  # nobody tracks it: Steam's sale median, marked as such
+            head = [f"≈ {approx_money(estimate, currency, lang)}", t["estimate"]]
         else:
             head = [t["no_price"] if snap["checked_at"] else t["price_later"]]
         extra = (t["you_have"].format(n=holding.qty) if holding
@@ -372,7 +381,7 @@ class InlineMode:
 
         # What the chat sees: never the sender's own quantities.
         lines = [f"<b>{html.escape(snap['name'])}</b>"]
-        if snap["cents"] is not None:
+        if fresh:  # else the card, drawn when sent, has the price Steam gives then
             lines.append(html.escape(" · ".join([money(snap["cents"], currency, lang)] + moves)))
         lines.append(f'<a href="{html.escape(MARKET_URL + quote(hash_name), quote=True)}">{t["steam"]}</a>')
         content = {"message_text": "\n".join(lines), "parse_mode": "HTML"}
@@ -390,7 +399,7 @@ class InlineMode:
         link = self._deep_link(f"it_{item_key(hash_name)}")
         if link:
             result["reply_markup"] = {"inline_keyboard": [[{"text": t["track"], "url": link}]]}
-        return result
+        return result, snap["cents"] is not None or estimate is not None or bool(snap["checked_at"])
 
     def _portfolio_result(self, user_id: int, lang: str) -> dict | None:
         summary = portfolio_summary(self.store, user_id)

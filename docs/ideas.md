@@ -4,6 +4,8 @@ Possible features we have researched but not built. Decide on them from user fee
 
 ## Instant price estimates after an inventory import
 
+*Partly built (2026-09-29):* the catalogue (`catalog.py`) downloads this file daily and inline mode shows "≈" estimates from it for items nobody tracks, with the USD→UAH ratio learned as sketched below. Using the estimates for imports is still open.
+
 **Problem.** After an import, the Mini App prices each item with its own Steam request, at about 1.5 s per item (≈40 items per minute). A 64-item import takes about 1.5 minutes and a 300-item one about 7.5 minutes. Home shows the progress, but the portfolio value keeps changing until the pass finishes.
 
 **Idea.** Show an estimate ("≈") for every imported item right away, and replace it with the exact Steam price as the refresh reaches each item.

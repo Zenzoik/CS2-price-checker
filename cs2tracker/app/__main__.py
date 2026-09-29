@@ -21,7 +21,7 @@ from .inline import InlineMode
 from .monitor import AdminAlerts, HealthMonitor
 from .notify import Notifier
 from .prices import InventoryService, PriceService
-from .server import CARDS, INVENTORY_LIMITER, LIMITER, create_app
+from .server import CARDS, CATALOG, INVENTORY_LIMITER, LIMITER, create_app
 from .settings import SettingsError, load_app_settings
 from .sync import InventorySync
 from .telegram import TelegramBot
@@ -85,7 +85,8 @@ async def serve() -> None:
             # Shares the inventory budget with users' lookups, so it can't starve them.
             syncer = InventorySync(store, inventories, app[INVENTORY_LIMITER], bot.message_user)
             broadcaster = Broadcaster(store, bot.message_user, allows=settings.allows)
-            bot.inline = InlineMode(settings, store, prices, app[CARDS], bot, limiter=app[LIMITER])
+            bot.inline = InlineMode(settings, store, prices, app[CARDS], bot, limiter=app[LIMITER],
+                                    catalog=app[CATALOG])
             if crashed_before:
                 await alerts.event("restarted")
             await asyncio.gather(
@@ -95,6 +96,7 @@ async def serve() -> None:
                 supervise("Notifications", lambda: notifier.run(prices.passed), alerts),
                 supervise("Inventory sync", syncer.run, alerts),
                 supervise("Broadcasts", broadcaster.run, alerts),
+                supervise("Item catalogue", app[CATALOG].run, alerts),
             )
     finally:
         if runner is not None:

@@ -27,6 +27,7 @@ from .auth import AuthError, validate_init_data
 from .db import (
     DIGESTS, ITEM_METRICS, MAX_FOLDER_NAME, MAX_QTY, PORTFOLIO_METRICS, QuantityLimit, Store, net_cents,
 )
+from .catalog import Catalog
 from .export import holdings_csv, sales_csv
 from .inline import Cards
 from .notify import current_value, language, valid_zone, zone
@@ -121,6 +122,8 @@ ICON_LIMITER = web.AppKey("icon_limiter", object)
 ICONS = web.AppKey("icons", dict)
 # inline mode's price cards (see inline.py)
 CARDS = web.AppKey("cards", Cards)
+# every market item, searchable in memory (see catalog.py)
+CATALOG = web.AppKey("catalog", Catalog)
 # user id -> monotonic time we last wrote their last_seen (at most once a minute)
 TOUCHED = web.AppKey("touched", dict)
 TOUCH_EVERY = 60
@@ -282,17 +285,24 @@ async def search(request: web.Request) -> web.Response:
     if not 2 <= len(query) <= 100:
         raise ApiError(400, "invalid", "Type at least 2 characters")
     _event(request, "search")
-    try:
-        results = await request.app[PRICES].search(query, _charge(request))
-    except SteamBusy as e:
-        raise ApiError(503, "busy", "Steam is busy, try again") from e
-    except SteamError as e:
-        log.warning("Search %r failed: %s", query, e)
-        raise ApiError(503, "steam", "Steam is not responding, try again") from e
-    held = {h.hash_name for h in request.app[STORE].holdings(request[USER_ID])}
+    store = request.app[STORE]
+    held = {h.hash_name for h in store.holdings(request[USER_ID])}
+    # The catalogue answers at once; Steam's search (often 429 here) only for names it lacks.
+    names = request.app[CATALOG].search(query, 15)
+    if names:
+        found = [(n, *(store.item(n) or (n, None))) for n in names]
+    else:
+        try:
+            results = await request.app[PRICES].search(query, _charge(request))
+        except SteamBusy as e:
+            raise ApiError(503, "busy", "Steam is busy, try again") from e
+        except SteamError as e:
+            log.warning("Search %r failed: %s", query, e)
+            raise ApiError(503, "steam", "Steam is not responding, try again") from e
+        request.app[CATALOG].remember([r.hash_name for r in results])
+        found = [(r.hash_name, r.name, r.icon_url) for r in results[:15]]
     return web.json_response({"results": [
-        {"hash_name": r.hash_name, "name": r.name, "icon": r.icon_url, "held": r.hash_name in held}
-        for r in results[:15]
+        {"hash_name": n, "name": name, "icon": icon, "held": n in held} for n, name, icon in found
     ]})
 
 
@@ -1079,7 +1089,8 @@ def _holding_json(h) -> dict:
 
 
 def create_app(settings: AppSettings, store: Store, prices: PriceService,
-               inventories: InventoryService | None = None, bot=None, icon_fetch=None) -> web.Application:
+               inventories: InventoryService | None = None, bot=None, icon_fetch=None,
+               catalog: Catalog | None = None) -> web.Application:
     app = web.Application(middlewares=[security_headers, authenticate], client_max_size=MAX_BODY)
     app[SETTINGS] = settings
     # Versioned asset URLs: Telegram's WebView caches hard, a new URL cannot be stale.
@@ -1104,7 +1115,8 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app[ICON_FETCH] = icon_fetch or fetch_icon
     app[ICON_LIMITER] = RateLimiter(ICONS_PER_MINUTE)
     app[ICONS] = {}
-    app[CARDS] = Cards(settings, store, prices, icon_fetch=app[ICON_FETCH], bot=bot)
+    app[CATALOG] = catalog if catalog is not None else Catalog(store)
+    app[CARDS] = Cards(settings, store, prices, icon_fetch=app[ICON_FETCH], bot=bot, catalog=app[CATALOG])
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)

@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS items (
     name      TEXT NOT NULL,
     icon      TEXT
 );
+CREATE INDEX IF NOT EXISTS items_icon ON items (icon);
+-- Every CS2 market item (catalog.py), for search; refreshed from a third-party list.
+CREATE TABLE IF NOT EXISTS catalog (
+    hash_name TEXT PRIMARY KEY,
+    usd_cents INTEGER,             -- Steam's 7-day median sale in USD: ranking only, never shown
+    traded    INTEGER NOT NULL DEFAULT 0  -- sold on Steam in the last 24 h
+);
 {holdings}
 -- Usage, for the admin's statistics screen.
 CREATE TABLE IF NOT EXISTS users (
@@ -1009,31 +1016,42 @@ class Store:
 
     # -- inline mode -----------------------------------------------------------
 
-    def search_items(self, words: list[str], limit: int = 20) -> list[str]:
-        """Hash names from the catalogue whose name has every word (any case).
-
-        The whole phrase as the name comes first, then names that start with it,
-        then what most users hold. No Steam request: this is what an inline
-        query shows while the user is still typing.
-        """
-        words = [w for w in words if w]
-        if not words:
-            return []
-        esc = lambda w: w.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")  # noqa: E731
-        where = " AND ".join("(i.name LIKE ? ESCAPE '\\' OR i.hash_name LIKE ? ESCAPE '\\')" for _ in words)
-        args: list = [f"%{esc(w)}%" for w in words for _ in (0, 1)]
-        phrase = " ".join(words).lower()
-        rows = self.conn.execute(
-            f"""SELECT i.hash_name FROM items i
-                LEFT JOIN (SELECT hash_name, COUNT(*) AS holders FROM holdings GROUP BY hash_name) h
-                  ON h.hash_name = i.hash_name
-                WHERE {where}
-                ORDER BY lower(i.name) = ? DESC, lower(i.name) LIKE ? ESCAPE '\\' DESC,
-                         COALESCE(h.holders, 0) DESC, length(i.name), i.name
-                LIMIT ?""",
-            args + [phrase, f"{esc(phrase)}%", limit],
+    def catalog_rows(self) -> list[tuple[str, int | None, int]]:
+        """(hash name, USD cents, traded) for every item known: the catalogue and anything seen on Steam."""
+        return self.conn.execute(
+            """SELECT n.hash_name, c.usd_cents, COALESCE(c.traded, 0)
+               FROM (SELECT hash_name FROM catalog UNION SELECT hash_name FROM items) n
+               LEFT JOIN catalog c ON c.hash_name = n.hash_name"""
         ).fetchall()
-        return [r[0] for r in rows]
+
+    def catalog_to_warm(self, checked_before: float, limit: int) -> list[str]:
+        """Catalogue items with no Steam sale median (rarely sold: Dragon Lore, rare knives, new
+        items), whose price wasn't asked for since `checked_before`: never-asked first."""
+        return [r[0] for r in self.conn.execute(
+            """SELECT c.hash_name FROM catalog c LEFT JOIN prices p ON p.hash_name = c.hash_name
+               WHERE COALESCE(c.usd_cents, 0) = 0 AND (p.checked_at IS NULL OR p.checked_at < ?)
+               ORDER BY p.checked_at IS NOT NULL, p.checked_at LIMIT ?""", (checked_before, limit)).fetchall()]
+
+    def price_samples(self, since: float) -> list[tuple[int, int]]:
+        """(the catalogue's USD median, our exact price), both in cents, for items priced since `since`."""
+        return self.conn.execute(
+            "SELECT c.usd_cents, p.cents FROM prices p JOIN catalog c ON c.hash_name = p.hash_name "
+            "WHERE p.cents > 0 AND c.usd_cents > 0 AND p.updated_at >= ?", (since,)).fetchall()
+
+    def holder_counts(self) -> dict[str, int]:
+        return dict(self.conn.execute("SELECT hash_name, COUNT(*) FROM holdings GROUP BY hash_name").fetchall())
+
+    def catalog_times(self) -> tuple[float | None, float | None, float | None]:
+        """When the catalogue's names and pictures were last refreshed, and when a failed refresh may retry."""
+        meta = dict(self.conn.execute(
+            "SELECT key, value FROM meta WHERE key IN ('catalog_names_at', 'catalog_pictures_at', 'catalog_retry_at')"
+        ).fetchall())
+        get = lambda key: float(meta[key]) if key in meta else None  # noqa: E731
+        return get("catalog_names_at"), get("catalog_pictures_at"), get("catalog_retry_at")
+
+    def set_catalog_retry(self, at: float) -> None:
+        with self.conn:
+            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('catalog_retry_at', ?)", (str(at),))
 
     def popular_items(self, limit: int = 10) -> list[str]:
         """What most users hold: shown to someone with nothing of their own yet."""
