@@ -400,3 +400,25 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 .link-btn:disabled { color: var(--hint); cursor: default; }
 .undo-sale { font-size: 14px; margin-top: 2px; }
 .import-title { margin-top: 4px; }
+/* Home's actions menu, top-left of the summary. */
+.bell.menu-btn { right: auto; left: -6px; }
+/* Overview: the menu, share and bell sit in a row above the value, which gets the full width. */
+.overview-hero { padding: 52px 4px 12px; }
+.overview-hero .hero-value { --room: calc(min(100vw, 560px) - 40px); }
+.menu-backdrop { position: fixed; inset: 0; z-index: 20; touch-action: none; background: rgba(0, 0, 0, 0.12); }
+.menu {
+  position: absolute; z-index: 21; top: 50px; left: -6px; min-width: 210px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; padding: 4px 0; text-align: left;
+  background: var(--card); border-radius: 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--sep);
+}
+.menu-item {
+  min-height: 44px; padding: 10px 16px; border: 0; background: none; cursor: pointer; text-align: left;
+  color: var(--fg); font: inherit; font-size: 16px;
+}
+.menu-item + .menu-item { border-top: 1px solid var(--sep); }
+.menu-item:active { background: var(--skeleton); }
+.menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu-item:disabled { color: var(--hint); cursor: default; }
+/* On dark themes a shadow doesn't show: lift the surface instead. */
+:root[data-scheme="dark"] .menu { background: color-mix(in srgb, var(--card) 88%, white); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
+:root[data-scheme="dark"] .menu-item + .menu-item { border-top-color: rgba(255, 255, 255, 0.08); }

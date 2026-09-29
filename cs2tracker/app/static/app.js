@@ -19,7 +19,7 @@
       changeDay: "24h", changeWeek: "7d", allItems: "View all", historyGrowing: "History starts today",
       breakEven: "Break-even / item", sellListings: "For sale: {n}", buyOrders: "Buy orders: {n}", spread: "Spread: {pct}",
       historyUnavailable: "History unavailable. Tap to retry", compositionChanged: "Holdings changed",
-      chartLabel: "Portfolio value by day", sections: "Sections", period: "Period", profitLabel: "Profit",
+      chartLabel: "Portfolio value by day", sections: "Sections", menu: "Menu", period: "Period", profitLabel: "Profit",
       range_7d: "Week", range_30d: "Month", range_all: "All",
       scope_7d: "7 days", scope_30d: "30 days", scope_all: "all time", marketOnly: "{period}, price moves only",
       notifications: "Notifications", notifyMe: "Notify me…", alertsHere: "Alerts",
@@ -173,7 +173,7 @@
       changeDay: "24 ч", changeWeek: "7 д", allItems: "Все", historyGrowing: "История начинается сегодня",
       breakEven: "Безубыточность / шт.", sellListings: "В продаже: {n}", buyOrders: "Заявок на покупку: {n}", spread: "Спред: {pct}",
       historyUnavailable: "История недоступна. Нажмите, чтобы повторить", compositionChanged: "Состав портфеля изменился",
-      chartLabel: "Стоимость портфеля по дням", sections: "Разделы", period: "Период", profitLabel: "Прибыль",
+      chartLabel: "Стоимость портфеля по дням", sections: "Разделы", menu: "Меню", period: "Период", profitLabel: "Прибыль",
       range_7d: "Неделя", range_30d: "Месяц", range_all: "Всё",
       scope_7d: "7 дней", scope_30d: "30 дней", scope_all: "всё время", marketOnly: "{period}, только изменение цен",
       notifications: "Уведомления", notifyMe: "Уведомить меня…", alertsHere: "Уведомления",
@@ -327,7 +327,7 @@
       changeDay: "24 год", changeWeek: "7 д", allItems: "Усі", historyGrowing: "Історія починається сьогодні",
       breakEven: "Беззбитковість / шт.", sellListings: "У продажу: {n}", buyOrders: "Заявок на купівлю: {n}", spread: "Спред: {pct}",
       historyUnavailable: "Історія недоступна. Натисніть, щоб повторити", compositionChanged: "Склад портфеля змінився",
-      chartLabel: "Вартість портфеля за днями", sections: "Розділи", period: "Період", profitLabel: "Прибуток",
+      chartLabel: "Вартість портфеля за днями", sections: "Розділи", menu: "Меню", period: "Період", profitLabel: "Прибуток",
       range_7d: "Тиждень", range_30d: "Місяць", range_all: "Усе",
       scope_7d: "7 днів", scope_30d: "30 днів", scope_all: "весь час", marketOnly: "{period}, лише зміна цін",
       notifications: "Сповіщення", notifyMe: "Сповістити мене…", alertsHere: "Сповіщення",
@@ -627,8 +627,13 @@
   const app = document.getElementById("app");
   function mount(nodes, { keepScroll = false } = {}) {
     const y = window.scrollY;
+    dropMenuListeners();
+    // A menu reopened by this redraw gets back the item the keyboard was on.
+    menuFocusAt = [...app.querySelectorAll(".menu-item")].indexOf(document.activeElement);
     const shown = nodes.filter(Boolean);
     app.replaceChildren(...shown);
+    // A screen without the menu (another screen, an empty folder) forgets it was open.
+    if (!app.querySelector(".menu-btn")) state.menuOpen = false;
     document.body.classList.toggle("has-nav", shown.some((n) => n.classList && n.classList.contains("bottom-nav")));
     window.scrollTo(0, keepScroll ? y : 0);
   }
@@ -773,6 +778,8 @@
     busy: false,
     back: null,
     selected: null, // Set of hash names while Home is in selection mode
+    menuOpen: false, // Home's actions menu; kept open across the redraws polling makes
+    exporting: false,
     folder: (() => { // the folder Home shows (null: all), remembered per device
       try { return JSON.parse(localStorage.getItem("folder") || "null"); } catch (e) { return null; }
     })(),
@@ -926,7 +933,7 @@
   // Line icons drawn with the text colour, so they follow the theme and the active tab.
   const TAB_ICONS = {
     overview: "M4 20V10l8-6 8 6v10h-5v-6H9v6z",
-    portfolio: "M4 6h16M4 12h16M4 18h16",
+    portfolio: "M4 8h16v11H4zM9 8V5h6v3M4 13h16",
   };
 
   function tabIcon(tab) {
@@ -941,7 +948,7 @@
         h("button", { type: "button", class: `tab${state.tab === tab ? " active" : ""}`,
           "aria-current": state.tab === tab ? "page" : null,
           onclick: () => {
-            if (state.tab === tab) return;
+            if (state.tab === tab) { toTop(); return; }
             state.tab = tab;
             state.selected = null;
             haptic.tap();
@@ -949,6 +956,14 @@
           },
         }, tabIcon(tab), label)),
     );
+  }
+
+  // Tapping the tab you are on scrolls up to the summary (and its menu).
+  function toTop() {
+    if (window.scrollY === 0) return;
+    haptic.tap();
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
   }
 
   function shortDay(day) {
@@ -1105,6 +1120,7 @@
     mount([
       folderBar(p),
       h("section", { class: "overview-hero" },
+        menuButton(p),
         shareButton(),
         bellButton(),
         heroValue(money(value)),
@@ -1138,8 +1154,6 @@
       ...(watchSection(p) || []),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
-      p.is_admin && h("p", { class: "foot" },
-        h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
       bottomNav(),
     ], { keepScroll });
     if (chartFocused) {
@@ -1196,12 +1210,13 @@
     }
     if (!p.items.length) {
       mount([h("section", { class: "empty-state" },
+        menuButton(p),
         bellButton(),
         h("div", { class: "empty-icon", "aria-hidden": "true" }, "📦"),
         h("div", { class: "empty-title" }, t("emptyTitle")),
         h("p", { class: "empty-text" }, t("emptyText")),
         realizedLine(p.realized),
-      ), syncCard(p.sync), ...(watchSection(p) || []), p.is_admin && h("p", { class: "foot" }, h("button", { type: "button", class: "link-btn", onclick: showAdmin }, t("stats"))),
+      ), syncCard(p.sync), ...(watchSection(p) || []),
       bottomNav()]);
       return;
     }
@@ -1225,6 +1240,7 @@
     mount([
       !state.selected && folderBar(p),
       h("section", { class: "hero" },
+        !state.selected && menuButton(p),
         !state.selected && bellButton(),
         heroValue(money(value)),
         pricedCost > 0 && h("div", { class: `hero-pnl num ${trend(pnl / pricedCost)}` },
@@ -1246,7 +1262,6 @@
       ...(!state.selected && watchSection(p) || []),
       h("p", { class: "foot hint" }, foot.join(" · ")),
       state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
-      !state.selected && portfolioLinks(p),
       !state.selected && bottomNav(),
     ], { keepScroll });
   }
@@ -2515,13 +2530,113 @@
       } }, "⋯"));
   }
 
-  // Under the Portfolio list: folders, export and (for admins) statistics.
+  // Folders, export and (for admins) statistics: one list for both the menu and
+  // the links under an empty folder, where there is no summary to hold the menu.
+  function portfolioActions(p) {
+    return [
+      { label: t("folders"), run: () => showFolders(() => showHome()) },
+      p.items.length > 0 && { label: state.exporting ? t("exporting") : t("exportCsv"), run: exportCsv,
+        stays: true, busy: state.exporting, export: true },
+      p.is_admin && { label: t("stats"), run: showAdmin },
+    ].filter(Boolean);
+  }
+
+  // In an empty folder, where there is no summary (and no menu) above.
   function portfolioLinks(p) {
-    const link = (text, onclick) => h("button", { type: "button", class: "link-btn", onclick }, text);
-    return h("p", { class: "foot links" },
-      link(t("folders"), () => { haptic.tap(); showFolders(() => showHome()); }),
-      p.items.length > 0 && link(t("exportCsv"), exportCsv),
-      p.is_admin && link(t("stats"), showAdmin));
+    return h("p", { class: "foot links" }, portfolioActions(p).map((a) =>
+      h("button", { type: "button", class: "link-btn", disabled: a.busy, "data-export": a.export && "", onclick: () => {
+        if (!a.stays) haptic.tap();
+        a.run();
+      } }, a.label)));
+  }
+
+  // The same actions from the summary's top-left corner, so they are there
+  // without scrolling past a list that can run to hundreds of rows.
+  let menuListeners = null;
+  let menuFocusAt = -1;
+
+  function dropMenuListeners() {
+    if (!menuListeners) return;
+    document.removeEventListener("keydown", menuListeners.key, true);
+    menuListeners = null;
+  }
+
+  function closeMenu({ focus = false } = {}) {
+    state.menuOpen = false;
+    dropMenuListeners();
+    if (state.back === closeMenu) {
+      state.back = null;
+      setBack(false);
+    }
+    app.querySelectorAll(".menu, .menu-backdrop").forEach((el) => el.remove());
+    const button = app.querySelector(".menu-btn");
+    if (!button) return;
+    button.setAttribute("aria-expanded", "false");
+    if (focus) button.focus();
+  }
+
+  function menuButton(p) {
+    // An empty portfolio has only Folders (and Statistics for admins): no menu for one entry.
+    if (portfolioActions(p).length < 2) return null;
+    const svg = svgEl("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
+    svgEl("path", { d: "M4 7h16M4 12h16M4 17h16" }, svg);
+    const button = h("button", { type: "button", class: "bell menu-btn", "aria-label": t("menu"),
+      "aria-haspopup": "menu", "aria-expanded": "false" }, svg);
+    // focusAt: the item to focus (-1: none), for the keyboard and after a redraw.
+    const open = (focusAt) => {
+      const items = portfolioActions(p).map((a) =>
+        h("button", { type: "button", role: "menuitem", class: "menu-item", disabled: a.busy,
+          "data-export": a.export && "", onclick: () => {
+            // Export stays open, saying it is sending, and closes once it is done.
+            if (a.stays) { a.run(); return; }
+            closeMenu();
+            haptic.tap();
+            a.run();
+          } }, a.label));
+      const menu = h("div", { class: "menu", role: "menu", "aria-label": t("menu") }, items);
+      // A tap outside only closes the menu; it doesn't also open what is under it.
+      // Scrolling would carry the menu off-screen and leave the backdrop: the wheel closes it,
+      // and touch can't scroll through it (touch-action in the CSS).
+      const backdrop = h("div", { class: "menu-backdrop", "aria-hidden": "true",
+        onclick: () => closeMenu(), onwheel: () => closeMenu() });
+      button.after(backdrop, menu);
+      button.setAttribute("aria-expanded", "true");
+      state.menuOpen = true;
+      // Telegram's back (Android's system back too) closes the menu, not the app.
+      if (!state.back) {
+        state.back = closeMenu;
+        setBack(true);
+      }
+      const key = (e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation(); // not the app-wide Escape, which goes back
+          closeMenu({ focus: true });
+        } else if (e.key === "Tab") {
+          closeMenu({ focus: true }); // Tab then moves on from the button
+        } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const live = items.filter((i) => !i.disabled);
+          if (!live.length) return;
+          const at = live.indexOf(document.activeElement);
+          const step = e.key === "ArrowDown" ? 1 : -1;
+          live[at < 0 ? (step > 0 ? 0 : live.length - 1) : (at + step + live.length) % live.length].focus();
+        }
+      };
+      document.addEventListener("keydown", key, true);
+      menuListeners = { key };
+      const target = items[focusAt] && !items[focusAt].disabled ? items[focusAt]
+        : focusAt >= 0 ? items.find((i) => !i.disabled) : null;
+      if (target) target.focus({ preventScroll: true });
+    };
+    button.addEventListener("click", (e) => {
+      if (state.menuOpen) { closeMenu(); return; }
+      haptic.tap();
+      // A tap leaves focus where it is; the keyboard moves into the menu.
+      open(e.detail === 0 ? 0 : -1);
+    });
+    // A redraw while it was open (prices poll in the background): keep it open.
+    if (state.menuOpen) queueMicrotask(() => { if (button.isConnected) open(menuFocusAt); });
+    return button;
   }
 
   function folderOptions(current, { placeholder = null, create = true } = {}) {
@@ -2652,17 +2767,22 @@
   // -- export ---------------------------------------------------------------------
   // The bot sends the CSV files to the chat: that works in every Telegram client.
 
-  async function exportCsv(event) {
-    if (state.busy) return;
-    const link = event && event.currentTarget;
-    const label = link && link.textContent;
+  // What the export entries say comes from state, so a redraw mid-export keeps it.
+  function paintExport() {
+    app.querySelectorAll("[data-export]").forEach((el) => {
+      el.disabled = state.exporting;
+      el.textContent = state.exporting ? t("exporting") : t("exportCsv");
+    });
+  }
+
+  async function exportCsv() {
+    if (state.busy || state.exporting) return;
     haptic.tap();
+    // Set before the write-access popup: a redraw behind it must not offer export again.
+    state.exporting = true;
+    paintExport();
     let granted = await ensureWriteAccess();
     state.busy = true;
-    if (link) {
-      link.disabled = true;
-      link.textContent = t("exporting");
-    }
     try {
       for (let asked = false; ; asked = true) {
         try {
@@ -2683,10 +2803,9 @@
       alertUser(errorText(e));
     }
     state.busy = false;
-    if (link && link.isConnected) {
-      link.disabled = false;
-      link.textContent = label;
-    }
+    state.exporting = false;
+    paintExport();
+    if (state.menuOpen) closeMenu();
   }
 
   // -- share card -----------------------------------------------------------------
