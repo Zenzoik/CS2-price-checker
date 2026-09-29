@@ -127,6 +127,18 @@ CREATE TABLE IF NOT EXISTS inventory_sync (
     next_at      REAL NOT NULL,
     error        TEXT                        -- private | not_found; NULL when the last read worked
 );
+-- Steam profiles a user opened an inventory from, newest first (MAX_RECENT_PROFILES).
+CREATE TABLE IF NOT EXISTS recent_profiles (
+    user_id INTEGER NOT NULL,
+    steamid TEXT NOT NULL,
+    name    TEXT,              -- the profile's display name, when known
+    vanity  TEXT,              -- the custom URL name typed, when one was
+    avatar  TEXT,              -- a Steam avatar URL, when known
+    items   INTEGER NOT NULL,  -- marketable items at the last look
+    used_at REAL NOT NULL,
+    named_at REAL,             -- when the name was last asked for (a trade link has none at first)
+    PRIMARY KEY (user_id, steamid)
+);
 -- A user's own grouping of positions ("Main", "Alt", "Long-term"); one folder per position.
 CREATE TABLE IF NOT EXISTS folders (
     id      INTEGER PRIMARY KEY,
@@ -191,6 +203,7 @@ DIGESTS = ("off", "daily", "weekly")
 # An inventory is re-read at most this often per user.
 SYNC_EVERY = 86400
 MAX_FOLDERS = 10
+MAX_RECENT_PROFILES = 10
 MAX_FOLDER_NAME = 32
 
 
@@ -774,6 +787,56 @@ class Store:
                 "profit": round(known_proceeds - cost) if known else None}
 
     # -- inventory sync --------------------------------------------------------
+
+    def remember_profile(self, user_id: int, steamid: str, items: int, name: str | None = None,
+                         vanity: str | None = None, avatar: str | None = None, at: float | None = None) -> None:
+        """A profile whose inventory the user opened: first in their recent ones.
+
+        A name or picture learned before is kept when this look brought none,
+        and only the newest MAX_RECENT_PROFILES stay.
+        """
+        at = time.time() if at is None else at
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO recent_profiles (user_id, steamid, name, vanity, avatar, items, used_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id, steamid) DO UPDATE SET
+                     name = COALESCE(excluded.name, name), vanity = COALESCE(excluded.vanity, vanity),
+                     avatar = COALESCE(excluded.avatar, avatar), items = excluded.items, used_at = excluded.used_at""",
+                (user_id, steamid, name, vanity, avatar, items, at),
+            )
+            self.conn.execute(
+                """DELETE FROM recent_profiles WHERE user_id = ? AND steamid NOT IN (
+                     SELECT steamid FROM recent_profiles WHERE user_id = ? ORDER BY used_at DESC LIMIT ?)""",
+                (user_id, user_id, MAX_RECENT_PROFILES),
+            )
+
+    def recent_profiles(self, user_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT steamid, name, vanity, avatar, items, used_at FROM recent_profiles WHERE user_id = ? "
+            "ORDER BY used_at DESC", (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def unnamed_profile(self, asked_before: float) -> str | None:
+        """The most recently used profile without a name, not asked about since `asked_before`."""
+        row = self.conn.execute(
+            "SELECT steamid FROM recent_profiles WHERE name IS NULL AND (named_at IS NULL OR named_at < ?) "
+            "ORDER BY used_at DESC LIMIT 1", (asked_before,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def name_profile(self, steamid: str, name: str | None, avatar: str | None, at: float | None = None) -> None:
+        """What Steam says about a profile, for everyone who has it among their recent ones."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE recent_profiles SET name = COALESCE(?, name), avatar = COALESCE(?, avatar), named_at = ? "
+                "WHERE steamid = ?", (name, avatar, time.time() if at is None else at, steamid))
+
+    def forget_profile(self, user_id: int, steamid: str) -> bool:
+        with self.conn:
+            return self.conn.execute("DELETE FROM recent_profiles WHERE user_id = ? AND steamid = ?",
+                                     (user_id, steamid)).rowcount > 0
 
     def remember_inventory(self, user_id: int, steamid: str, items: dict[str, int], at: float | None = None) -> None:
         """After an import: the profile to re-read, and what it held just now.

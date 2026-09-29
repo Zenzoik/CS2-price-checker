@@ -68,6 +68,7 @@
       err_inventory_busy: "Many imports right now. Try again in a minute.",
       err_import_expired: "The inventory list was refreshed. Check it and tap Import again.",
       nothingFound: "Nothing found",
+      recentProfiles: "Recent profiles", profileItems: "{n} items", forgetProfile: "Remove from recent",
       inPortfolio: "In portfolio",
       qty: "Quantity", buyPrice: "Price paid, each",
       now: "On Steam {price} · you'd get {net}", noPrice: "No price on the market right now",
@@ -221,6 +222,7 @@
       err_inventory_busy: "Сейчас много импортов. Попробуйте через минуту.",
       err_import_expired: "Список инвентаря обновлён. Проверьте его и нажмите «Импортировать» ещё раз.",
       nothingFound: "Ничего не найдено",
+      recentProfiles: "Недавние профили", profileItems: "предметов: {n}", forgetProfile: "Убрать из недавних",
       inPortfolio: "В портфеле",
       qty: "Количество", buyPrice: "Цена покупки за шт.",
       now: "На Steam {price} · вы получите {net}", noPrice: "Сейчас на рынке нет цены",
@@ -374,6 +376,7 @@
       err_inventory_busy: "Зараз багато імпортів. Спробуйте за хвилину.",
       err_import_expired: "Список інвентарю оновлено. Перевірте його й натисніть «Імпортувати» ще раз.",
       nothingFound: "Нічого не знайдено",
+      recentProfiles: "Нещодавні профілі", profileItems: "предметів: {n}", forgetProfile: "Прибрати з нещодавніх",
       inPortfolio: "У портфелі",
       qty: "Кількість", buyPrice: "Ціна купівлі за шт.",
       now: "У Steam {price} · ви отримаєте {net}", noPrice: "Зараз на ринку немає ціни",
@@ -1417,6 +1420,7 @@
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
     mount([h("div", { class: "search" }, input), h("div", { id: "results" })]);
     renderResults();
+    loadRecents();
     // Only a fresh search pops the keyboard; coming back keeps the list readable.
     if (!search.query) setTimeout(() => input.focus(), 50);
   }
@@ -1483,7 +1487,7 @@
       content = tappable(h("p", { class: "message tappable" }, errorText(search.error), h("br"), t("retry")),
         () => onQuery(search.query));
     } else if (!search.results) {
-      content = h("p", { class: "message" }, t("searchHint"));
+      content = [h("p", { class: "message" }, t("searchHint")), recentProfiles()];
     } else if (!search.results.length) {
       content = h("p", { class: "message" }, t("nothingFound"));
     } else {
@@ -1497,7 +1501,64 @@
         showItem({ hash_name: r.hash_name, name: r.name, icon: r.icon }, "add", showSearch);
       })));
     }
-    box.replaceChildren(content);
+    box.replaceChildren(...[].concat(content).filter(Boolean));
+  }
+
+  // -- recent Steam profiles ----------------------------------------------------
+  // Kept on the server (so every device has them): each profile whose inventory
+  // was opened, newest first. Tapping one opens that inventory again.
+
+  const recents = { list: null };
+
+  async function loadRecents() {
+    try {
+      recents.list = (await api("/api/profiles")).profiles;
+    } catch (e) { /* the hint alone is fine */ }
+    if (state.screen === "search") renderResults();
+  }
+
+  function profileLabel(p) {
+    return p.name || p.vanity || `Steam ID …${p.steamid.slice(-4)}`;
+  }
+
+  function recentProfiles() {
+    const list = recents.list;
+    if (!list || !list.length) return null;
+    return h("section", { class: "recents" },
+      h("div", { class: "section-title hint" }, t("recentProfiles")),
+      h("ul", { class: "list" }, list.map((p) => {
+        const label = profileLabel(p);
+        const picture = p.avatar
+          ? h("img", { class: "thumb avatar", alt: "", loading: "lazy", src: p.avatar })
+          : h("div", { class: "thumb avatar initial", "aria-hidden": "true" }, label.slice(0, 1).toUpperCase());
+        const forget = h("button", {
+          type: "button", class: "folder-delete", "aria-label": `${t("forgetProfile")}: ${label}`,
+          onkeydown: (e) => e.stopPropagation(), // Enter here must not open the profile
+          onclick: async (e) => {
+            e.stopPropagation();
+            haptic.tap();
+            try {
+              recents.list = (await api("/api/profiles/delete", { method: "POST", body: { steamid: p.steamid } })).profiles;
+            } catch (err) {
+              alertUser(errorText(err));
+            }
+            if (state.screen === "search") renderResults();
+          },
+        }, "✕");
+        return tappable(h("li", { class: "row" },
+          picture,
+          h("div", { class: "row-main" },
+            h("div", { class: "row-title" }, label),
+            h("div", { class: "row-sub hint num" }, `${t("profileItems", { n: p.items })} · ${ago(p.used_at)}`)),
+          forget,
+        ), () => {
+          haptic.tap();
+          const link = `https://steamcommunity.com/profiles/${p.steamid}`;
+          const input = document.querySelector(".search input");
+          if (input) input.value = link;
+          onQuery(link);
+        });
+      })));
   }
 
   // -- import from a Steam inventory ------------------------------------------
@@ -1535,6 +1596,7 @@
     }
     if (imp.ctrl !== ctrl) return; // the query changed meanwhile
     Object.assign(imp, { ctrl: null, loading: false, data, error, prices: new Map() });
+    if (data) loadRecents(); // it is the newest recent profile now
     if (data) {
       const free = data.items.filter((i) => !i.held);
       if (kept) {

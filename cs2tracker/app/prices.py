@@ -16,8 +16,8 @@ from collections import deque
 from typing import Callable
 
 from ..steam import (
-    InventoryItem, ItemNotFound, PrivateInventory, ProfileNotFound, RateLimited, SearchResult, SteamError,
-    SteamMarket,
+    InventoryItem, ItemNotFound, PrivateInventory, ProfileInfo, ProfileNotFound, RateLimited, SearchResult,
+    SteamError, SteamMarket,
 )
 from ..tracker import CurrencyMismatch, PriceFetcher
 from .db import Store
@@ -329,7 +329,8 @@ class InventoryService:
         self._clock = clock
         self.interactive_wait = interactive_wait
         self.ttl = ttl
-        self._steamids: dict[str, tuple[float, object]] = {}
+        self._steamids: dict[str, tuple[float, object]] = {}  # vanity name -> ProfileInfo
+        self._profiles: dict[str, tuple[float, object]] = {}  # steamid -> ProfileInfo
         self._inventories: dict[str, tuple[float, object]] = {}
 
     def _fresh(self, cache: dict, key: str):
@@ -368,6 +369,25 @@ class InventoryService:
         kind, value = profile
         steamid = value
         if kind == "vanity":
-            steamid = await self._cached_call(self._steamids, value.lower(), self.market.resolve_vanity, value, charge)
+            info = await self._cached_call(self._steamids, value.lower(), self._vanity_profile, value, charge)
+            steamid = info.steamid
+            self._put(self._profiles, steamid, info)  # its name and picture came along for free
         items = await self._cached_call(self._inventories, steamid, self.market.inventory, steamid, charge)
         return steamid, items
+
+    def _vanity_profile(self, name: str) -> ProfileInfo:
+        return self.market.profile("vanity", name)
+
+    def known_profile(self, steamid: str) -> ProfileInfo | None:
+        """Name and picture of a profile looked up lately, without asking Steam."""
+        try:
+            return self._fresh(self._profiles, steamid)
+        except SteamError:
+            return None
+
+    async def profile(self, steamid: str, charge: Callable[[int], None] = lambda n: None) -> ProfileInfo:
+        """Name and picture of a profile (one Steam request, cached). Raises SteamError subclasses."""
+        return await self._cached_call(self._profiles, steamid, self._steamid_profile, steamid, charge)
+
+    def _steamid_profile(self, steamid: str) -> ProfileInfo:
+        return self.market.profile("steamid", steamid)

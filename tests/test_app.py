@@ -15,7 +15,7 @@ from cs2tracker.app.settings import AppSettings, SettingsError, load_app_setting
 from cs2tracker.app.telegram import BotApiError, TelegramBot
 from cs2tracker.app.prices import InventoryService
 from cs2tracker.steam import (
-    InventoryItem, ItemNotFound, PrivateInventory, Quote, RateLimited, SearchResult, SteamError,
+    InventoryItem, ItemNotFound, PrivateInventory, ProfileInfo, Quote, RateLimited, SearchResult, SteamError,
 )
 
 TOKEN = "123456:TEST-token"
@@ -60,9 +60,11 @@ class FakeMarket:
             raise self.inventory_items
         return list(self.inventory_items)
 
-    def resolve_vanity(self, name):
-        self.calls.append(("vanity", name))
-        return STEAMID
+    profile_name = "Ann"
+
+    def profile(self, kind, value):
+        self.calls.append((kind, value))
+        return ProfileInfo(STEAMID if kind == "vanity" else value, self.profile_name, None)
 
 
 def result(name, icon="abc"):

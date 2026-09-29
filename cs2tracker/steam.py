@@ -120,6 +120,28 @@ class SearchResult:
 
 
 @dataclass(frozen=True)
+class ProfileInfo:
+    steamid: str
+    name: str | None      # the profile's display name
+    avatar: str | None    # a 64 px avatar on Steam's avatar CDN
+
+
+# Only Steam's own avatar hosts: the app shows the picture.
+_AVATAR_RE = re.compile(r"^https://avatars\.(?:akamai\.|fastly\.|cloudflare\.)?steamstatic\.com/[0-9a-f]{40}_medium\.jpg$")
+
+
+def parse_profile_xml(text: str) -> ProfileInfo | None:
+    """A profile page's `?xml=1` answer; None when it names no profile."""
+    m = re.search(r"<steamID64>(7656119\d{10})</steamID64>", text)
+    if not m:
+        return None
+    name = re.search(r"<steamID><!\[CDATA\[(.{1,64}?)\]\]></steamID>", text, re.S)
+    avatar = re.search(r"<avatarMedium><!\[CDATA\[([^\]]+)\]\]></avatarMedium>", text)
+    return ProfileInfo(m.group(1), name.group(1).strip() or None if name else None,
+                       avatar.group(1) if avatar and _AVATAR_RE.match(avatar.group(1)) else None)
+
+
+@dataclass(frozen=True)
 class InventoryItem:
     hash_name: str
     name: str
@@ -291,15 +313,22 @@ class SteamMarket:
 
     def resolve_vanity(self, name: str) -> str:
         """SteamID64 behind steamcommunity.com/id/<name>."""
-        if not _VANITY_RE.match(name):
-            raise ProfileNotFound(name)
+        return self.profile("vanity", name).steamid
+
+    def profile(self, kind: str, value: str) -> ProfileInfo:
+        """Who is behind a custom URL name ("vanity") or a SteamID64 ("steamid"): id, name, avatar."""
+        if kind == "vanity" and _VANITY_RE.match(value):
+            url = f"{COMMUNITY_URL}/id/{value}/"
+        elif kind == "steamid" and _STEAMID_RE.match(value):
+            url = f"{COMMUNITY_URL}/profiles/{value}/"
+        else:
+            raise ProfileNotFound(value)
         # Interactive and strictly limited by Steam: no backoff, the user retries.
-        resp = self._get(f"{COMMUNITY_URL}/id/{name}/", {"xml": 1}, self.request_delay, 0,
-                         headers=COMMUNITY_HEADERS)
-        m = re.search(r"<steamID64>(7656119\d{10})</steamID64>", resp.text)
-        if not m:
-            raise ProfileNotFound(name)
-        return m.group(1)
+        resp = self._get(url, {"xml": 1}, self.request_delay, 0, headers=COMMUNITY_HEADERS)
+        info = parse_profile_xml(resp.text)
+        if info is None:
+            raise ProfileNotFound(value)
+        return info
 
     def inventory(self, steamid: str, *, max_pages: int = 3, page_size: int = 2000) -> list[InventoryItem]:
         """Marketable items of a public CS2 inventory, one entry per hash name.

@@ -28,6 +28,7 @@ GAP = 30          # seconds between two reads, so users' imports go first
 RETRY_BUSY = 300
 RETRY_FAILED = 3600
 PAUSE_RATE_LIMITED = 900
+NAME_RETRY = 86400  # a recent profile whose name couldn't be read is asked again a day later
 LISTED = 3        # names spelled out in a message; the rest are counted
 
 TEXTS = {
@@ -128,7 +129,34 @@ class InventorySync:
                 log.exception("Could not message user %s about their inventory", user_id)
         return True
 
+    async def name_next(self) -> bool:
+        """Names a recent profile opened by trade link or SteamID, with the same spare budget.
+
+        A custom URL's lookup brings the name along; these need one request of
+        their own, which must never make someone's import wait.
+        """
+        now = self.clock()
+        if now < self.paused_until:
+            return False
+        steamid = self.store.unnamed_profile(now - NAME_RETRY)
+        if steamid is None:
+            return False
+        try:
+            info = await self.inventories.profile(steamid, self._charge)
+        except Deferred:
+            return False
+        except RateLimited as e:
+            log.warning("Steam rate-limited a profile name: %s", e)
+            self.paused_until = now + PAUSE_RATE_LIMITED
+            return True
+        except SteamError as e:  # private, gone, or Steam failing: try again tomorrow
+            log.info("No name for profile %s: %s", steamid, e)
+            self.store.name_profile(steamid, None, None, now)
+            return True
+        self.store.name_profile(steamid, info.name, info.avatar, now)
+        return True
+
     async def run(self) -> None:
         while True:
-            worked = await self.sync_next()
+            worked = await self.sync_next() or await self.name_next()
             await asyncio.sleep(GAP if worked else IDLE_CHECK)

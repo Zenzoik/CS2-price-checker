@@ -82,7 +82,9 @@ CSP = "; ".join([
     "script-src 'self' https://telegram.org",
     # telegram-web-app.js injects a <style> when running in Telegram's web client.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://community.fastly.steamstatic.com https://community.akamai.steamstatic.com",
+    "img-src 'self' data: https://community.fastly.steamstatic.com https://community.akamai.steamstatic.com "
+    "https://avatars.akamai.steamstatic.com https://avatars.fastly.steamstatic.com "
+    "https://avatars.cloudflare.steamstatic.com https://avatars.steamstatic.com",
     "connect-src 'self'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -407,6 +409,10 @@ async def inventory(request: web.Request) -> web.Response:
     store = request.app[STORE]
     _event(request, "inventory")
     store.remember_items([(i.hash_name, i.name, i.icon_url) for i in items])
+    info = request.app[INVENTORY].known_profile(steamid)  # a custom URL's lookup brought its name
+    store.remember_profile(user_id, steamid, len(items), name=info.name if info else None,
+                           vanity=profile[1] if profile[0] == "vanity" else None,
+                           avatar=info.avatar if info else None)
     previews = request.app[PREVIEWS]
     if len(previews) >= 1000:
         previews.pop(next(iter(previews)))
@@ -420,6 +426,20 @@ async def inventory(request: web.Request) -> web.Response:
                    "container": i.container, "held": i.hash_name in held,
                    "price": _money((store.price(i.hash_name) or (None,))[0])} for i in items],
     })
+
+
+async def recent_profiles(request: web.Request) -> web.Response:
+    return web.json_response({"profiles": request.app[STORE].recent_profiles(request[USER_ID])})
+
+
+async def forget_profile(request: web.Request) -> web.Response:
+    body = await _json_body(request)
+    steamid = body.get("steamid")
+    if not isinstance(steamid, str) or not re.fullmatch(r"7656119\d{10}", steamid):
+        raise ApiError(400, "invalid", "Unknown profile")
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    request.app[STORE].forget_profile(request[USER_ID], steamid)
+    return await recent_profiles(request)
 
 
 async def import_items(request: web.Request) -> web.Response:
@@ -1127,6 +1147,8 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_post("/api/holdings/delete", delete_holding)
     app.router.add_get("/api/inventory", inventory)
     app.router.add_post("/api/import", import_items)
+    app.router.add_get("/api/profiles", recent_profiles)
+    app.router.add_post("/api/profiles/delete", forget_profile)
     app.router.add_get("/api/admin/stats", admin_stats)
     app.router.add_post("/api/watch", watch)
     app.router.add_post("/api/sales", sell)
