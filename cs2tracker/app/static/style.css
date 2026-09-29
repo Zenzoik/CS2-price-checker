@@ -108,7 +108,7 @@ main > .hero-fresh { text-align: center; } /* the empty-folder views, without a 
   padding: 6px 0 calc(6px + max(var(--safe-bottom), env(safe-area-inset-bottom, 0px)));
 }
 .bottom-nav .tab {
-  width: min(50%, 280px); min-height: 44px; display: grid; gap: 2px; place-items: center;
+  width: min(33.34%, 200px); min-height: 44px; display: grid; gap: 2px; place-items: center;
   border: 0; background: none; color: var(--hint); font: inherit; font-size: 12px;
   cursor: pointer; padding: 2px 4px;
 }
@@ -426,3 +426,21 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 /* On dark themes a shadow doesn't show: lift the surface instead. */
 :root[data-scheme="dark"] .menu { background: color-mix(in srgb, var(--card) 88%, white); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
 :root[data-scheme="dark"] .menu-item + .menu-item { border-top-color: rgba(255, 255, 255, 0.08); }
+/* Friends ----------------------------------------------------------------- */
+.friend-row .rank { flex: none; min-width: 16px; margin-right: -4px; text-align: center; font-size: 14px; }
+.friend-row .row-change { white-space: nowrap; }
+.friend-row .row-side { flex: none; max-width: none; }
+.friend-row .row-main { min-width: 0; }
+.link-copy {
+  display: block; width: 100%; box-sizing: border-box; margin: 14px 0 0; padding: 10px 12px; border: 0;
+  border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; font-size: 16px; /* iOS won't zoom */
+}
+.offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }
+@media (max-width: 360px) {
+  .segmented button { font-size: 13px; }
+  .friend-row .change-label { display: none; } /* the name keeps its room */
+}
+.friend-row.me { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+.friend-row.me .row-title { font-weight: 600; }
+.friends-empty { padding-top: 6vh; padding-bottom: 8px; }
+.invite-avatar { width: 72px; height: 72px; margin: 0 auto 14px; font-size: 30px; }

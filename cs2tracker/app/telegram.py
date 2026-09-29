@@ -9,9 +9,12 @@ import asyncio
 import json
 import logging
 import re
+from urllib.parse import urlencode
 
 import aiohttp
 
+from .friends import display_name
+from .friends import texts as friend_texts
 from .settings import AppSettings
 
 log = logging.getLogger(__name__)
@@ -283,8 +286,14 @@ class TelegramBot:
         if not self.settings.allows(user["id"]):
             await self.call("sendMessage", chat_id=chat["id"], text=t["private"])
             return
-        # A card's "Track the price" button: that item, opened in the app.
         text = message.get("text") or ""
+        # A friend's invite link: who it is from, and the app that takes it.
+        if text.startswith("/start fr_") and self.store is not None:
+            invite = self._friend_invite(text.split(maxsplit=1)[1][3:], user)
+            if invite is not None:
+                await self.call("sendMessage", chat_id=chat["id"], text=invite[0], reply_markup=invite[1])
+                return
+        # A card's "Track the price" button: that item, opened in the app.
         if text.startswith("/start ") and self.inline is not None:
             item = self.inline.start_payload(text.split(maxsplit=1)[1].strip(), user.get("language_code"))
             if item is not None:
@@ -297,6 +306,24 @@ class TelegramBot:
         await self.call("sendMessage", chat_id=chat["id"], text=welcome, reply_markup={
             "inline_keyboard": [[{"text": t["open"], "web_app": {"url": self.settings.public_url}}]],
         })
+
+    def _friend_invite(self, code: str, user: dict) -> tuple[str, dict] | None:
+        """The reply to /start fr_<code>; None for a code that isn't (or no longer is) one."""
+        owner, expired = (self.store.invite_lookup(code) if re.fullmatch(r"[A-Za-z0-9_-]{8,32}", code)
+                          else (None, False))
+        if owner is None:
+            return None
+        lang = user.get("language_code")
+        t = friend_texts(lang)
+        url = self.settings.public_url
+        if expired:
+            text = t["expired"]
+        elif owner == user["id"]:
+            text = t["own_invite"]
+        else:
+            text = t["invite"].format(name=display_name(self.store.user_names(owner), lang, handle=True))
+            url = f"{url}{'&' if '?' in url else '?'}{urlencode({'friend': code})}"
+        return text, {"inline_keyboard": [[{"text": t["open"], "web_app": {"url": url}}]]}
 
     def _answer_inline(self, query: dict) -> None:
         """Answered in a task of its own, so a slow Steam search holds up no other update.

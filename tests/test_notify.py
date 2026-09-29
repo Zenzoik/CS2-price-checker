@@ -351,7 +351,7 @@ def test_api_watch_and_prefs(tmp_path):
 
         r = await post("/api/prefs", {"digest": "daily", "digest_hour": 9, "tz": "Europe/Kyiv"})
         assert await r.json() == {"digest": "daily", "digest_hour": 9, "tz": "Europe/Kyiv", "can_notify": False,
-                                  "sync": None}
+                                  "friends_view": "percent", "sync": None}
         assert store.prefs(42)["digest_offered"] == 1
         for bad in ({"digest": "hourly"}, {"digest_hour": 24}, {"digest_hour": True},
                     {"tz": "Mars/Olympus"}, {"write_access": 1}):

@@ -29,6 +29,8 @@ from .db import (
 )
 from .catalog import Catalog
 from .export import holdings_csv, sales_csv
+from .friends import VIEWS, display_name, summary
+from .friends import texts as friend_texts
 from .inline import Cards
 from .notify import current_value, language, valid_zone, zone
 from .prices import InventoryService, PriceService, SteamBusy
@@ -129,6 +131,17 @@ CATALOG = web.AppKey("catalog", Catalog)
 # user id -> monotonic time we last wrote their last_seen (at most once a minute)
 TOUCHED = web.AppKey("touched", dict)
 TOUCH_EVERY = 60
+# messages to users sent in the background (kept so they aren't garbage-collected mid-way)
+TASKS = web.AppKey("tasks", set)
+INVITE_CODE = re.compile(r"[A-Za-z0-9_-]{8,32}")
+# (user id, view, detail) -> (monotonic time, summary): friends' results, reused for a
+# minute, since a list of 100 friends is 100 portfolios to add up on the event loop.
+SUMMARIES = web.AppKey("summaries", dict)
+SUMMARY_TTL = 60
+# (inviter, new friend) -> monotonic time the inviter was told: once a day per pair,
+# so accepting, removing and accepting again can't be used to spam someone.
+TOLD = web.AppKey("told", dict)
+TELL_EVERY = 86400
 # RequestKey appeared in aiohttp 3.12; a plain string works everywhere.
 USER_ID = web.RequestKey("user_id", int) if hasattr(web, "RequestKey") else "user_id"
 
@@ -878,11 +891,12 @@ async def get_prefs(request: web.Request) -> web.Response:
     prefs = store.prefs(request[USER_ID])
     return web.json_response({"digest": prefs["digest"], "digest_hour": prefs["digest_hour"],
                               "tz": prefs["tz"], "can_notify": bool(prefs["write_access"]),
+                              "friends_view": prefs["friends_view"],
                               "sync": store.sync_settings(request[USER_ID])})
 
 
 async def save_prefs(request: web.Request) -> web.Response:
-    """Any of {digest, digest_hour, tz, digest_offered, write_access, sync_enabled}."""
+    """Any of {digest, digest_hour, tz, digest_offered, write_access, friends_view, sync_enabled}."""
     body = await _json_body(request)
     user_id = request[USER_ID]
     store = request.app[STORE]
@@ -907,6 +921,10 @@ async def save_prefs(request: web.Request) -> web.Response:
             if not isinstance(body[key], bool):
                 raise ApiError(400, "invalid", f"{key} must be true or false")
             changes[key] = int(body[key])
+    if "friends_view" in body:
+        if body["friends_view"] not in VIEWS:
+            raise ApiError(400, "invalid", "friends_view must be percent or full")
+        changes["friends_view"] = body["friends_view"]
     if "sync_enabled" in body:
         if not isinstance(body["sync_enabled"], bool):
             raise ApiError(400, "invalid", "sync_enabled must be true or false")
@@ -924,6 +942,140 @@ async def save_prefs(request: web.Request) -> web.Response:
     if changes.get("digest") in ("daily", "weekly"):
         _event(request, "digest")
     return await get_prefs(request)
+
+
+# -- friends ----------------------------------------------------------------------
+# Friends see each other's results (friends.py says what); a friendship starts from
+# an invite link, t.me/<bot>?start=fr_<code>, which the bot answers with the app.
+
+def _invite_link(request: web.Request, renew: bool = False) -> str | None:
+    bot = getattr(request.app[BOT], "username", None)
+    if not bot:
+        return None
+    return f"https://t.me/{bot}?start=fr_{request.app[STORE].invite_code(request[USER_ID], renew)}"
+
+
+def _invite_owner(request: web.Request, code) -> int:
+    owner = (request.app[STORE].invite_owner(code)
+             if isinstance(code, str) and INVITE_CODE.fullmatch(code) else None)
+    if owner is None:
+        raise ApiError(404, "invite_invalid", "This invite link is no longer valid")
+    return owner
+
+
+async def _summaries(app: web.Application, keys: list[tuple[int, str, bool]]) -> list[dict]:
+    """summary() for each (user id, view, detail), from the minute's cache or else worked
+    out in a thread on a read-only connection: a list of friends is a month of history
+    each, seconds' work that must not hold up everyone else's requests."""
+    cache, now = app[SUMMARIES], time.monotonic()
+    missing = [key for key in dict.fromkeys(keys) if not (key in cache and now - cache[key][0] < SUMMARY_TTL)]
+    if missing:
+        def work() -> list[dict]:
+            with app[STORE].reader() as store:
+                return [summary(store, user_id, view=view, detail=detail) for user_id, view, detail in missing]
+        results = await asyncio.to_thread(work)
+        if len(cache) > 5000:
+            cache.clear()
+        for key, result in zip(missing, results):
+            cache[key] = (now, result)
+    return [cache[key][1] for key in keys]
+
+
+async def friends_list(request: web.Request) -> web.Response:
+    """Your own results next to your friends' (in what each of them chose to show)."""
+    store, user_id = request.app[STORE], request[USER_ID]
+    lang = store.user_language(user_id)
+    view = store.prefs(user_id)["friends_view"]
+    rows = store.friends(user_id)
+    results = await _summaries(request.app, [(f["user_id"], f["view"], False) for f in rows])
+    friends = [{"id": f["user_id"], "name": display_name(f, lang), "since": f["since"], **result}
+               for f, result in zip(rows, results)]
+    return web.json_response({
+        "link": _invite_link(request),
+        "view": view,
+        # You as your friends see you, so both sides rank you the same.
+        "me": summary(store, user_id, view=view),
+        "friends": friends,
+    })
+
+
+async def friend_detail(request: web.Request) -> web.Response:
+    raw = request.match_info["id"]
+    friend_id = _row_id(int(raw) if re.fullmatch(r"[0-9]{1,19}", raw) else None, "Unknown friend")
+    store = request.app[STORE]
+    if not store.are_friends(request[USER_ID], friend_id):
+        raise ApiError(404, "not_friend", "Not in your friends")
+    return web.json_response({
+        "id": friend_id, "name": display_name(store.user_names(friend_id), store.user_language(request[USER_ID])),
+        **(await _summaries(request.app, [(friend_id, store.prefs(friend_id)["friends_view"], True)]))[0],
+    })
+
+
+async def invite_info(request: web.Request) -> web.Response:
+    """Whose link this is, before the user says yes to it."""
+    request.app[WRITE_LIMITER].check(request[USER_ID])  # no cheap guessing of codes
+    owner = _invite_owner(request, request.query.get("code"))
+    store, user_id = request.app[STORE], request[USER_ID]
+    status = "self" if owner == user_id else "friend" if store.are_friends(user_id, owner) else "new"
+    return web.json_response({"id": owner, "status": status, "name": display_name(
+        store.user_names(owner), store.user_language(user_id), handle=status == "new")})
+
+
+async def accept_invite(request: web.Request) -> web.Response:
+    body = await _json_body(request)
+    user_id = request[USER_ID]
+    request.app[WRITE_LIMITER].check(user_id)
+    owner = _invite_owner(request, body.get("code"))
+    result = request.app[STORE].add_friend(user_id, owner)
+    if result == "self":
+        raise ApiError(400, "own_invite", "This is your own invite link")
+    if result == "full":
+        raise ApiError(400, "friends_full", "Too many friends")
+    if result == "added":
+        _event(request, "friend")
+        _tell_new_friend(request.app, owner, user_id)
+    return web.json_response({"id": owner, "status": result})
+
+
+def _tell_new_friend(app: web.Application, owner: int, friend_id: int) -> None:
+    """The inviter hears that their link worked, if the bot may write to them."""
+    bot, store, told, now = app[BOT], app[STORE], app[TOLD], time.monotonic()
+    if bot is None or not store.prefs(owner)["write_access"] or now - told.get((owner, friend_id), -TELL_EVERY) < TELL_EVERY:
+        return
+    if len(told) > 10_000:
+        told.clear()
+    told[(owner, friend_id)] = now
+    lang = store.user_language(owner)
+    text = friend_texts(lang)["accepted"].format(name=display_name(store.user_names(friend_id), lang))
+
+    async def send() -> None:
+        try:
+            await bot.message_user(owner, text)
+        except Exception as e:  # the friendship stands either way
+            log.warning("Could not tell %s about a new friend: %s", owner, e)
+    task = asyncio.ensure_future(send())
+    app[TASKS].add(task)
+    task.add_done_callback(app[TASKS].discard)
+
+
+async def remove_friend(request: web.Request) -> web.Response:
+    """Ends it for both, and retires the remover's link: the other side may still have it."""
+    body = await _json_body(request)
+    store, user_id = request.app[STORE], request[USER_ID]
+    request.app[WRITE_LIMITER].check(user_id)
+    removed = store.remove_friend(user_id, _row_id(body.get("id"), "Unknown friend"))
+    if removed and store.invite_owner_code(user_id) is not None:
+        store.invite_code(user_id, renew=True)
+    return web.json_response({"removed": removed, "link": _invite_link(request) if removed else None})
+
+
+async def renew_invite(request: web.Request) -> web.Response:
+    """A new link; whoever has the old one can no longer use it (friends stay friends)."""
+    request.app[WRITE_LIMITER].check(request[USER_ID])
+    link = _invite_link(request, renew=True)
+    if link is None:
+        raise ApiError(503, "unavailable", "The bot is not running")
+    return web.json_response({"link": link})
 
 
 async def admin_stats(request: web.Request) -> web.Response:
@@ -1133,6 +1285,14 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app[USER_INVENTORY_LIMITER] = RateLimiter(*INVENTORY_LOOKUPS_PER_USER)
     app[PREVIEWS] = {}
     app[TOUCHED] = {}
+    app[TASKS] = set()
+    app[SUMMARIES] = {}
+    app[TOLD] = {}
+
+    async def cancel_tasks(app: web.Application) -> None:
+        for task in list(app[TASKS]):
+            task.cancel()
+    app.on_cleanup.append(cancel_tasks)
     app[BOT] = bot
     app[EXPORT_LIMITER] = RateLimiter(*EXPORTS_PER_USER)
     app[SHARE_LIMITER] = RateLimiter(*SHARES_PER_USER)
@@ -1175,5 +1335,11 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_post("/api/alerts", save_alert)
     app.router.add_post("/api/alerts/delete", delete_alert)
     app.router.add_get("/api/prefs", get_prefs)
+    app.router.add_get("/api/friends", friends_list)
+    app.router.add_get("/api/friends/invite", invite_info)
+    app.router.add_post("/api/friends/accept", accept_invite)
+    app.router.add_post("/api/friends/delete", remove_friend)
+    app.router.add_post("/api/friends/link", renew_invite)
+    app.router.add_get("/api/friends/{id}", friend_detail)
     app.router.add_post("/api/prefs", save_prefs)
     return app

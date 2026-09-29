@@ -20,6 +20,25 @@
       breakEven: "Break-even / item", sellListings: "For sale: {n}", buyOrders: "Buy orders: {n}", spread: "Spread: {pct}",
       historyUnavailable: "History unavailable. Tap to retry", compositionChanged: "Holdings changed",
       chartLabel: "Portfolio value by day", sections: "Sections", menu: "Menu", period: "Period", profitLabel: "Profit",
+      friends: "Friends", inviteFriend: "Invite a friend", you: "You",
+      inviteText: "Let's see whose CS2 investments do better",
+      friendsEmptyTitle: "See how your friends are doing",
+      friendsEmptyText: "Send a friend your invite link. Once it's accepted, you'll see how each other's investments are doing.",
+      byMonth: "Over 30 days", itemsCount: "items: {n}", itemsShort: "{n} items",
+      whatFriendsSee: "What friends see", viewPercent: "Percent only", viewFull: "Whole portfolio",
+      friendsSee_percent: "Friends see only how your portfolio's value changed over 24 hours, 7 and 30 days, in percent: price moves, not your buying or selling. No profit, no amounts, no items.",
+      friendsSee_full: "Friends see your whole portfolio: its value, profit in money and every item with its quantity, price and price paid.",
+      friendsNever: "Folders, single sales and alerts stay private.",
+      copyLink: "Copy link", linkCopied: "Copied ✓", newLink: "New link",
+      newLinkConfirm: "Make a new invite link? The old one stops working; your friends stay.",
+      removeFriend: "Remove from friends", removeFriendConfirm: "Remove {name} from friends? Neither of you will see the other's results any more, and your invite link will change.",
+      inviteTitle: "{name} invites you to be friends", acceptInvite: "Add to friends",
+      inviteBody: "You'll see how each other's investments are doing. Each of you chooses what to show: changes in percent, or the whole portfolio.",
+      ownInvite: "This is your own invite link: send it to a friend.",
+      friendDay: "24 hours", friendWeek: "7 days", friendMonth: "30 days", linkTtl: "A link works for a day: send a fresh one from here.", meSees_full: "sharing all", meSees_percent: "sharing %", confirmFull: "Show friends your whole portfolio? All of them will see its value and every item with its quantity and the price you paid.", showsPercent: "{name} shows only changes in percent: price moves, not buying or selling.", friendItems: "Items", percentOnly: "percent only", copyByHand: "Couldn't copy: select the link and copy it yourself.", rankN: "Place {n}", friendAdded: "{name} is now your friend.", toFriends: "To friends", newLinkDone: "New link ready: the old one no longer works.", noPnl: "No prices paid", boardNote: "How much each portfolio's value changed in 30 days: price moves only, buying and selling don't count. “—”: no history yet.",
+      friendMarketOnly: "Changes are market moves only: buying or selling doesn't count.",
+      err_invite_invalid: "This invite link no longer works. Ask for a new one.", err_not_friend: "You're not friends any more.",
+      err_own_invite: "This is your own invite link: send it to a friend.", err_friends_full: "Too many friends (100 at most).",
       range_7d: "Week", range_30d: "Month", range_all: "All",
       scope_7d: "7 days", scope_30d: "30 days", scope_all: "all time", marketOnly: "{period}, price moves only",
       notifications: "Notifications", notifyMe: "Notify me…", alertsHere: "Alerts",
@@ -174,6 +193,25 @@
       breakEven: "Безубыточность / шт.", sellListings: "В продаже: {n}", buyOrders: "Заявок на покупку: {n}", spread: "Спред: {pct}",
       historyUnavailable: "История недоступна. Нажмите, чтобы повторить", compositionChanged: "Состав портфеля изменился",
       chartLabel: "Стоимость портфеля по дням", sections: "Разделы", menu: "Меню", period: "Период", profitLabel: "Прибыль",
+      friends: "Друзья", inviteFriend: "Пригласить друга", you: "Вы",
+      inviteText: "Давай посмотрим, у кого лучше идут инвестиции в CS2",
+      friendsEmptyTitle: "Смотрите, как идут дела у друзей",
+      friendsEmptyText: "Отправьте другу ссылку-приглашение. Когда его примут, вы будете видеть, как идут дела с инвестициями друг у друга.",
+      byMonth: "За 30 дней", itemsCount: "предметов: {n}", itemsShort: "{n} предм.",
+      whatFriendsSee: "Что видят друзья", viewPercent: "Только проценты", viewFull: "Весь портфель",
+      friendsSee_percent: "Друзья видят только, как менялась стоимость портфеля за 24 ч, 7 и 30 дней, в процентах — движение цен, без ваших покупок и продаж. Ни прибыли, ни сумм, ни предметов.",
+      friendsSee_full: "Друзья видят весь портфель: стоимость, прибыль в деньгах и все предметы — с количеством, ценой и ценой покупки.",
+      friendsNever: "Папки, отдельные продажи и уведомления не видны никому.",
+      copyLink: "Скопировать ссылку", linkCopied: "Скопировано ✓", newLink: "Новая ссылка",
+      newLinkConfirm: "Создать новую ссылку-приглашение? Старая перестанет работать, друзья останутся.",
+      removeFriend: "Удалить из друзей", removeFriendConfirm: "Удалить {name} из друзей? Вы оба перестанете видеть результаты друг друга, а ваша ссылка-приглашение сменится.",
+      inviteTitle: "{name} зовёт вас в друзья", acceptInvite: "Добавить в друзья",
+      inviteBody: "Вы будете видеть, как идут дела с инвестициями друг у друга. Каждый сам выбирает, что показывать: изменения в процентах или весь портфель.",
+      ownInvite: "Это ваша ссылка-приглашение — отправьте её другу.",
+      friendDay: "За 24 ч", friendWeek: "За 7 дней", friendMonth: "За 30 дней", linkTtl: "Ссылка работает сутки — отправляйте свежую отсюда.", meSees_full: "показываете всё", meSees_percent: "показываете %", confirmFull: "Показать друзьям весь портфель? Все они увидят его стоимость и каждый предмет с количеством и ценой покупки.", showsPercent: "{name} показывает только изменения в процентах — движение цен, без покупок и продаж.", friendItems: "Предметы", percentOnly: "только проценты", copyByHand: "Не получилось скопировать: выделите ссылку и скопируйте её сами.", rankN: "Место {n}", friendAdded: "{name} теперь у вас в друзьях.", toFriends: "К друзьям", newLinkDone: "Новая ссылка готова, старая больше не работает.", noPnl: "Цены покупки не указаны", boardNote: "Насколько изменилась стоимость портфеля за 30 дней — только движение цен, покупки и продажи не считаются. «—»: истории пока нет.",
+      friendMarketOnly: "Изменения — только движение цен: покупки и продажи не считаются.",
+      err_invite_invalid: "Эта ссылка-приглашение больше не работает. Попросите новую.", err_not_friend: "Вы больше не друзья.",
+      err_own_invite: "Это ваша ссылка-приглашение — отправьте её другу.", err_friends_full: "Слишком много друзей (не больше 100).",
       range_7d: "Неделя", range_30d: "Месяц", range_all: "Всё",
       scope_7d: "7 дней", scope_30d: "30 дней", scope_all: "всё время", marketOnly: "{period}, только изменение цен",
       notifications: "Уведомления", notifyMe: "Уведомить меня…", alertsHere: "Уведомления",
@@ -328,6 +366,25 @@
       breakEven: "Беззбитковість / шт.", sellListings: "У продажу: {n}", buyOrders: "Заявок на купівлю: {n}", spread: "Спред: {pct}",
       historyUnavailable: "Історія недоступна. Натисніть, щоб повторити", compositionChanged: "Склад портфеля змінився",
       chartLabel: "Вартість портфеля за днями", sections: "Розділи", menu: "Меню", period: "Період", profitLabel: "Прибуток",
+      friends: "Друзі", inviteFriend: "Запросити друга", you: "Ви",
+      inviteText: "Подивімося, у кого краще йдуть інвестиції в CS2",
+      friendsEmptyTitle: "Дивіться, як ідуть справи в друзів",
+      friendsEmptyText: "Надішліть другові посилання-запрошення. Коли його приймуть, ви бачитимете, як ідуть справи з інвестиціями одне в одного.",
+      byMonth: "За 30 днів", itemsCount: "предметів: {n}", itemsShort: "{n} предм.",
+      whatFriendsSee: "Що бачать друзі", viewPercent: "Лише відсотки", viewFull: "Весь портфель",
+      friendsSee_percent: "Друзі бачать лише, як змінювалася вартість портфеля за 24 год, 7 і 30 днів, у відсотках — рух цін, без ваших купівель і продажів. Ні прибутку, ні сум, ні предметів.",
+      friendsSee_full: "Друзі бачать весь портфель: вартість, прибуток у грошах і всі предмети — з кількістю, ціною та ціною купівлі.",
+      friendsNever: "Папки, окремі продажі й сповіщення не бачить ніхто.",
+      copyLink: "Скопіювати посилання", linkCopied: "Скопійовано ✓", newLink: "Нове посилання",
+      newLinkConfirm: "Створити нове посилання-запрошення? Старе перестане працювати, друзі залишаться.",
+      removeFriend: "Видалити з друзів", removeFriendConfirm: "Видалити {name} з друзів? Ви обоє перестанете бачити результати одне одного, а ваше посилання-запрошення зміниться.",
+      inviteTitle: "{name} кличе вас у друзі", acceptInvite: "Додати в друзі",
+      inviteBody: "Ви бачитимете, як ідуть справи з інвестиціями одне в одного. Кожен сам обирає, що показувати: зміни у відсотках чи весь портфель.",
+      ownInvite: "Це ваше посилання-запрошення — надішліть його другові.",
+      friendDay: "За 24 год", friendWeek: "За 7 днів", friendMonth: "За 30 днів", linkTtl: "Посилання працює добу — надсилайте свіже звідси.", meSees_full: "показуєте все", meSees_percent: "показуєте %", confirmFull: "Показати друзям весь портфель? Усі вони побачать його вартість і кожен предмет із кількістю та ціною купівлі.", showsPercent: "{name} показує лише зміни у відсотках — рух цін, без купівель і продажів.", friendItems: "Предмети", percentOnly: "лише відсотки", copyByHand: "Не вдалося скопіювати: виділіть посилання й скопіюйте його самі.", rankN: "Місце {n}", friendAdded: "{name} тепер у вас у друзях.", toFriends: "До друзів", newLinkDone: "Нове посилання готове, старе більше не працює.", noPnl: "Ціни купівлі не вказані", boardNote: "Наскільки змінилася вартість портфеля за 30 днів — лише рух цін, купівлі й продажі не враховуються. «—»: історії поки немає.",
+      friendMarketOnly: "Зміни — лише рух цін: купівлі й продажі не враховуються.",
+      err_invite_invalid: "Це посилання-запрошення більше не працює. Попросіть нове.", err_not_friend: "Ви більше не друзі.",
+      err_own_invite: "Це ваше посилання-запрошення — надішліть його другові.", err_friends_full: "Забагато друзів (не більше 100).",
       range_7d: "Тиждень", range_30d: "Місяць", range_all: "Усе",
       scope_7d: "7 днів", scope_30d: "30 днів", scope_all: "весь час", marketOnly: "{period}, лише зміна цін",
       notifications: "Сповіщення", notifyMe: "Сповістити мене…", alertsHere: "Сповіщення",
@@ -779,6 +836,12 @@
     back: null,
     selected: null, // Set of hash names while Home is in selection mode
     menuOpen: false, // Home's actions menu; kept open across the redraws polling makes
+    friends: null, // the Friends tab's data: { link, view, me, friends }
+    friendsAt: 0,
+    friendsLoading: 0, // the request id of the list load on its way, 0 when none
+    friendsError: null,
+    friendsRequest: 0, // newer requests (and removals) make older answers stale
+    friendsLinkShown: false, // no clipboard: the link is shown to copy by hand
     exporting: false,
     folder: (() => { // the folder Home shows (null: all), remembered per device
       try { return JSON.parse(localStorage.getItem("folder") || "null"); } catch (e) { return null; }
@@ -822,7 +885,11 @@
   let linkedItem = (() => {
     try { return new URLSearchParams(location.search).get("item"); } catch (e) { return null; }
   })();
-  if (linkedItem) {
+  // ?friend=<code>: opened from a friend's invite link (via the bot).
+  let pendingInvite = (() => {
+    try { return new URLSearchParams(location.search).get("friend"); } catch (e) { return null; }
+  })();
+  if (linkedItem || pendingInvite) {
     // Opened once: a reload (e.g. into a new version) lands on Home.
     try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) { /* cosmetic */ }
   }
@@ -838,6 +905,12 @@
         linkedItem = null;
         const held = heldItem(name);
         showItem(held || { hash_name: name, name, icon: null }, held ? "edit" : "add", null, { quiet: true });
+        return;
+      }
+      if (pendingInvite && state.screen === "home") {
+        const code = pendingInvite;
+        pendingInvite = null;
+        showInvite(code);
         return;
       }
     } catch (e) {
@@ -934,6 +1007,7 @@
   const TAB_ICONS = {
     overview: "M4 20V10l8-6 8 6v10h-5v-6H9v6z",
     portfolio: "M4 8h16v11H4zM9 8V5h6v3M4 13h16",
+    friends: "M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM21 19v-1a4 4 0 0 0-3-3.87M15.5 4.13a3.5 3.5 0 0 1 0 6.74",
   };
 
   function tabIcon(tab) {
@@ -944,7 +1018,7 @@
 
   function bottomNav() {
     return h("nav", { class: "bottom-nav", "aria-label": t("sections") },
-      [["overview", t("overview")], ["portfolio", t("portfolioTab")]].map(([tab, label]) =>
+      [["overview", t("overview")], ["portfolio", t("portfolioTab")], ["friends", t("friends")]].map(([tab, label]) =>
         h("button", { type: "button", class: `tab${state.tab === tab ? " active" : ""}`,
           "aria-current": state.tab === tab ? "page" : null,
           onclick: () => {
@@ -1190,6 +1264,10 @@
       return;
     }
 
+    if (state.tab === "friends") {
+      showFriends({ keepScroll });
+      return;
+    }
     if (state.tab === "overview" && p.items.length) {
       showOverview({ keepScroll });
       return;
@@ -2781,6 +2859,364 @@
     fresh.addEventListener("keydown", (e) => { if (e.key === "Enter") { fresh.blur(); add(); } });
     render();
     if (!(state.portfolio.folders || []).length) setTimeout(() => fresh.focus(), 50);
+  }
+
+  // -- screen: friends ---------------------------------------------------------------
+  // Friends see each other's results: percentages only, or the whole portfolio, as
+  // each owner chose (the server sends nothing more). A friendship starts from an invite
+  // link, which the bot answers with this app opened on ?friend=<code>.
+
+  const FRIENDS_TTL = 60000;
+
+  // `force`: a change was just saved, so a load already on its way is out of date.
+  async function loadFriends(force = false) {
+    if (state.friendsLoading && !force) return;
+    const request = ++state.friendsRequest;
+    state.friendsLoading = request;
+    try {
+      const data = await api("/api/friends");
+      if (request === state.friendsRequest) {
+        state.friends = data;
+        state.friendsError = null;
+      }
+    } catch (e) {
+      if (request === state.friendsRequest) state.friendsError = e;
+    }
+    if (state.friendsLoading === request) state.friendsLoading = 0;
+    if (request !== state.friendsRequest) return;
+    state.friendsAt = Date.now();
+    if (state.screen === "home" && state.tab === "friends") showHome({ keepScroll: true });
+  }
+
+  // The first character as people see it: a whole emoji, not half of one.
+  function initialOf(name) {
+    const text = String(name).replace(/^@/, "");
+    const first = typeof Intl.Segmenter === "function"
+      ? (new Intl.Segmenter(locale).segment(text)[Symbol.iterator]().next().value || {}).segment
+      : Array.from(text)[0];
+    return (first || "?").toLocaleUpperCase(locale);
+  }
+  const ratioText = (ratio) => (ratio == null ? "—" : percent(ratio));
+  const ratioClass = (ratio) => (ratio == null ? "hint" : trend(ratio));
+
+  // Ranked by the 30 days' change, which every view shows (profit only the full one);
+  // who has no history yet at the end.
+  function byMonth(a, b) {
+    if (a.change_30d == null || b.change_30d == null) return (a.change_30d == null) - (b.change_30d == null);
+    return b.change_30d - a.change_30d || a.name.localeCompare(b.name, locale);
+  }
+
+  // `rank` is null for who has no change to rank by.
+  function friendRow(f, rank) {
+    const sub = f.me ? t(`meSees_${f.view}`)
+      : f.view === "full" ? `${t("itemsShort", { n: f.items_count })} · ${money(f.value)}` : t("percentOnly");
+    const row = h("li", { class: `row compact friend-row${f.me ? " me plain" : ""}` },
+      h("span", { class: "rank hint num", "aria-label": rank == null ? null : t("rankN", { n: rank }) },
+        rank == null ? "" : String(rank)),
+      h("div", { class: "thumb avatar initial", "aria-hidden": "true" }, initialOf(f.name)),
+      h("div", { class: "row-main" },
+        h("div", { class: "row-title" }, f.name),
+        h("div", { class: "row-sub hint num" }, sub)),
+      h("div", { class: "row-side num" },
+        h("div", { class: `row-value ${ratioClass(f.change_30d)}` }, ratioText(f.change_30d)),
+        f.change_24h != null && h("div", { class: `row-change ${trend(f.change_24h)}` },
+          h("span", { class: "change-label" }, `${t("changeDay")} `), percent(f.change_24h))));
+    if (f.me) return row;
+    return tappable(row, () => { haptic.tap(); showFriend(f); });
+  }
+
+  function showFriends({ keepScroll = false } = {}) {
+    const f = state.friends;
+    if (!state.friendsLoading && (!f || Date.now() - state.friendsAt > FRIENDS_TTL)) loadFriends();
+    main.set(f && f.link ? t("inviteFriend") : null, inviteFriend);
+    const title = h("h1", { class: "screen-title" }, t("friends"));
+    if (!f) {
+      mount([title, state.friendsError
+        ? tappable(h("p", { class: "message tappable" }, errorText(state.friendsError), h("br"), t("retry")), () => {
+          state.friendsError = null;
+          loadFriends();
+          showHome();
+        })
+        : h("ul", { class: "list" }, [0, 1, 2].map(() => h("li", { class: "row compact" },
+          h("div", { class: "thumb avatar placeholder" }),
+          h("div", { class: "row-main" }, h("div", { class: "sk sk-line" }))))),
+      bottomNav()], { keepScroll });
+      return;
+    }
+    const board = [{ ...f.me, me: true, name: t("you") }, ...f.friends].sort(byMonth);
+    let ranked = 0;
+    const note = h("p", { class: "note" });
+    const explain = () => { note.textContent = `${t(`friendsSee_${f.view}`)} ${t("friendsNever")}`; };
+    explain();
+    // Quick taps: only the last request's answer counts, and a failure goes back to
+    // what the server last confirmed. Your own row follows (it is you as friends see you).
+    const privacy = segmentedControl([["percent", t("viewPercent")], ["full", t("viewFull")]], f.view, async (view) => {
+      const was = f.view;
+      // Everything, to every friend, at once: asked first.
+      if (view === "full" && !(await confirmUser(t("confirmFull")))) {
+        if (state.screen === "home" && state.tab === "friends") showHome({ keepScroll: true });
+        return;
+      }
+      const request = ++privacySaves;
+      state.friendsRequest += 1; // a list on its way still has the old view
+      f.view = view;
+      explain();
+      try {
+        const prefs = await api("/api/prefs", { method: "POST", body: { friends_view: view } });
+        if (request !== privacySaves) return;
+        f.view = prefs.friends_view;
+        haptic.ok();
+        loadFriends(true); // your own row, as friends now see you
+      } catch (e) {
+        if (request !== privacySaves) return;
+        f.view = was;
+        haptic.fail();
+        alertUser(errorText(e));
+        if (state.screen === "home" && state.tab === "friends") showHome({ keepScroll: true });
+      }
+    }, t("whatFriendsSee"));
+    const link = (text, onclick) => h("button", { type: "button", class: "link-btn", onclick }, text);
+    mount([
+      title,
+      f.friends.length ? [
+        h("div", { class: "section-title hint" }, t("byMonth")),
+        h("ul", { class: "list" }, board.map((x) => friendRow(x, x.change_30d == null ? null : ++ranked))),
+        h("p", { class: "note" }, t("boardNote")),
+      ] : h("section", { class: "empty-state friends-empty" },
+        h("div", { class: "empty-icon", "aria-hidden": "true" }, "👥"),
+        h("div", { class: "empty-title" }, t("friendsEmptyTitle")),
+        h("p", { class: "empty-text" }, t("friendsEmptyText"))),
+      state.friendsError && h("p", { class: "foot down" }, errorText(state.friendsError)),
+      h("div", { class: "section-title hint" }, t("whatFriendsSee")),
+      privacy,
+      note,
+      f.link && state.friendsLinkShown && h("input", { class: "link-copy", type: "text", readonly: true,
+        value: f.link, "aria-label": t("copyLink"), onfocus: (e) => e.target.select() }),
+      f.link && state.friendsLinkShown && h("p", { class: "note" }, t("copyByHand")),
+      f.link && h("p", { class: "foot links" },
+        link(t("copyLink"), (e) => copyLink(f.link, e.currentTarget)),
+        link(t("newLink"), renewLink)),
+      f.link && h("p", { class: "foot hint" }, t("linkTtl")),
+      bottomNav(),
+    ].flat(), { keepScroll });
+  }
+
+  let privacySaves = 0;
+
+  function inviteFriend() {
+    const f = state.friends;
+    if (!f || !f.link) return;
+    haptic.tap();
+    const url = `https://t.me/share/url?url=${encodeURIComponent(f.link)}&text=${encodeURIComponent(t("inviteText"))}`;
+    if (nativeUi && tg.isVersionAtLeast("6.1")) tg.openTelegramLink(url);
+    else window.open(url, "_blank", "noopener");
+  }
+
+  // Clipboard API first; older Telegram WebViews refuse it, then the old way; failing
+  // both, the link goes on the screen, selected, for the system's own copy.
+  async function copyLink(link, button) {
+    haptic.tap();
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(link);
+      copied = true;
+    } catch (e) {
+      const area = h("textarea", { readonly: true, class: "offscreen" }, link);
+      document.body.append(area);
+      area.select();
+      try { copied = document.execCommand("copy"); } catch (err) { copied = false; }
+      area.remove();
+    }
+    if (!copied) {
+      state.friendsLinkShown = true;
+      showHome({ keepScroll: true });
+      const input = app.querySelector(".link-copy");
+      if (input) { input.focus(); input.select(); }
+      return;
+    }
+    haptic.ok();
+    if (button && button.isConnected) {
+      button.textContent = t("linkCopied");
+      setTimeout(() => { if (button.isConnected) button.textContent = t("copyLink"); }, 2000);
+    }
+  }
+
+  async function renewLink() {
+    if (state.busy || !(await confirmUser(t("newLinkConfirm")))) return;
+    state.busy = true;
+    try {
+      const { link } = await api("/api/friends/link", { method: "POST" });
+      if (state.friends) state.friends.link = link;
+      haptic.ok();
+      alertUser(t("newLinkDone"));
+      if (state.screen === "home" && state.tab === "friends") showHome({ keepScroll: true });
+    } catch (e) {
+      haptic.fail();
+      alertUser(errorText(e));
+    }
+    state.busy = false;
+  }
+
+  // `data` and `scroll`: back from one of their items, to where the user was.
+  function showFriend(friend, { data = null, scroll = 0 } = {}) {
+    state.screen = "friend";
+    state.back = () => showHome();
+    setBack(true);
+    main.set(null);
+    secondary.set(null);
+    if (data) {
+      mount([h("h1", { class: "screen-title" }, friend.name), ...friendView(data).filter(Boolean)]);
+      window.scrollTo(0, scroll);
+      return;
+    }
+    const box = h("div", {}, h("section", { class: "hero" }, h("div", { class: "sk sk-hero" })));
+    mount([h("h1", { class: "screen-title" }, friend.name), box]);
+    api(`/api/friends/${encodeURIComponent(friend.id)}`).then((d) => {
+      if (state.screen === "friend" && app.contains(box)) box.replaceChildren(...friendView(d).filter(Boolean));
+    }).catch((e) => {
+      if (state.screen !== "friend" || !app.contains(box)) return;
+      if (e.code === "not_friend") { // no retry will change that: back to the (refreshed) list
+        state.friendsAt = 0;
+        box.replaceChildren(h("p", { class: "message" }, errorText(e)));
+        main.set(t("toFriends"), () => { state.tab = "friends"; showHome(); });
+        return;
+      }
+      box.replaceChildren(tappable(h("p", { class: "message tappable" }, errorText(e), h("br"), t("retry")),
+        () => showFriend(friend)));
+    });
+  }
+
+  function friendView(d) {
+    const full = d.view === "full";
+    // The big number: what the portfolio is worth when they show it all, else its month.
+    const hero = full
+      ? [heroValue(money(d.value)),
+        d.pnl_ratio != null ? h("div", { class: `hero-pnl num ${trend(d.pnl_ratio)}` },
+          `${money(d.pnl, true)} · ${percent(d.pnl_ratio)}`) : h("div", { class: "hero-sub hint" }, t("noPnl")),
+        d.invested > 0 && h("div", { class: "hero-sub hint num" }, `${t("invested")} ${money(d.invested)}`),
+        h("div", { class: "hero-sub hint num" }, t("itemsCount", { n: d.items_count }))]
+      : [heroValue(ratioText(d.change_30d), ratioClass(d.change_30d)),
+        h("div", { class: "hero-sub hint" }, t("friendMonth"))];
+    const stat = (label, ratio, extra) => h("li", { class: "row plain compact" },
+      h("div", { class: "row-main" }, h("div", { class: "row-title" }, label)),
+      h("div", { class: `row-side num ${ratioClass(ratio)}` }, extra ? `${extra} · ${ratioText(ratio)}` : ratioText(ratio)));
+    const stats = [
+      stat(t("friendDay"), d.change_24h),
+      stat(t("friendWeek"), d.change_7d),
+      full && stat(t("friendMonth"), d.change_30d),
+      full && d.realized_ratio != null && stat(t("realizedLabel"), d.realized_ratio, money(d.realized, true)),
+    ];
+    const items = full ? d.items.map((it) => friendItemRow(it, d)) : [];
+    return [
+      h("section", { class: "hero" }, ...hero),
+      h("ul", { class: "list" }, stats),
+      h("p", { class: "note" }, full ? t("friendMarketOnly") : t("showsPercent", { name: d.name })),
+      items.length > 0 && h("div", { class: "section-title hint" }, t("friendItems")),
+      items.length > 0 && h("ul", { class: "list" }, items),
+      h("button", { type: "button", class: "danger-link", onclick: () => removeFriend(d) }, t("removeFriend")),
+    ];
+  }
+
+  // A friend's position, laid out like your own on the Portfolio tab.
+  function friendItemRow(it, d) {
+    const sub = it.buy_price == null ? t("noBuyPrice", { qty: it.qty })
+      : t("position", { qty: it.qty, price: money(it.buy_price) });
+    return tappable(h("li", { class: "row" },
+      thumb(it.icon),
+      h("div", { class: "row-main" },
+        h("div", { class: "row-title" }, it.name),
+        h("div", { class: "row-sub hint num" }, sub)),
+      h("div", { class: "row-side num" },
+        h("div", { class: `row-value${it.value == null ? " hint" : ""}` }, it.value == null ? "—" : money(it.value)),
+        (it.pnl_ratio != null || it.change_24h != null) && h("div", { class: "row-metrics" },
+          it.pnl_ratio != null && h("span", { class: `row-pnl ${trend(it.pnl_ratio)}` }, percent(it.pnl_ratio)),
+          it.change_24h != null && h("span", { class: `row-change ${trend(it.change_24h)}` },
+            `${t("changeDay")} ${percent(it.change_24h)}`)))), () => {
+      // Their item, on your own item screen: its price, and yours to add or edit.
+      haptic.tap();
+      const held = heldItem(it.hash_name);
+      const scroll = window.scrollY;
+      showItem(held || { hash_name: it.hash_name, name: it.name, icon: it.icon }, held ? "edit" : "add",
+        () => showFriend(d, { data: d, scroll }));
+    });
+  }
+
+  async function removeFriend(d) {
+    if (state.busy || !(await confirmUser(t("removeFriendConfirm", { name: d.name })))) return;
+    state.busy = true;
+    try {
+      const { link } = await api("/api/friends/delete", { method: "POST", body: { id: d.id } });
+      haptic.ok();
+      state.friendsAt = 0;
+      loadFriends(true); // a list already on its way still has them
+      if (state.friends) {
+        state.friends.friends = state.friends.friends.filter((f) => f.id !== d.id);
+        if (link) state.friends.link = link;
+      }
+      state.busy = false;
+      showHome();
+      return;
+    } catch (e) {
+      haptic.fail();
+      alertUser(errorText(e));
+    }
+    state.busy = false;
+  }
+
+  // Opened from an invite link: whose it is, what each side will see, and a yes.
+  function showInvite(code) {
+    state.screen = "invite";
+    state.back = () => showHome();
+    setBack(true);
+    main.set(null);
+    secondary.set(null);
+    const box = h("div", {}, h("p", { class: "message" }, h("span", { class: "sk sk-line short" })));
+    mount([box]);
+    api(`/api/friends/invite?code=${encodeURIComponent(code)}`).then((info) => {
+      if (state.screen !== "invite" || !app.contains(box)) return;
+      if (info.status === "friend") {
+        state.tab = "friends";
+        showFriend(info);
+        return;
+      }
+      const own = info.status === "self";
+      box.replaceChildren(h("section", { class: "empty-state invite" },
+        h("div", { class: "thumb avatar initial invite-avatar", "aria-hidden": "true" }, initialOf(info.name)),
+        h("div", { class: "empty-title" }, own ? t("ownInvite") : t("inviteTitle", { name: info.name })),
+        !own && h("p", { class: "empty-text" }, t("inviteBody"))));
+      main.set(own ? t("toFriends") : t("acceptInvite"), own ? toFriends : () => acceptInvite(code, info));
+    }).catch((e) => {
+      if (state.screen !== "invite" || !app.contains(box)) return;
+      box.replaceChildren(h("p", { class: "message" }, errorText(e)));
+      main.set(t("toFriends"), toFriends); // not a dead end
+    });
+  }
+
+  function toFriends() {
+    state.tab = "friends";
+    showHome();
+  }
+
+  async function acceptInvite(code, info) {
+    if (state.busy) return;
+    state.busy = true;
+    main.set(t("acceptInvite"), null, { busy: true });
+    try {
+      await api("/api/friends/accept", { method: "POST", body: { code } });
+      haptic.ok();
+      state.busy = false;
+      state.friends = null;
+      state.friendsRequest += 1;
+      state.tab = "friends";
+      showFriend(info);
+      alertUser(t("friendAdded", { name: info.name }));
+      return;
+    } catch (e) {
+      haptic.fail();
+      alertUser(errorText(e));
+    }
+    state.busy = false;
+    if (state.screen === "invite") main.set(t("acceptInvite"), () => acceptInvite(code, info));
   }
 
   // -- export ---------------------------------------------------------------------

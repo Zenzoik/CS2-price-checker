@@ -7,9 +7,11 @@ database was created with.
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -102,7 +104,8 @@ CREATE TABLE IF NOT EXISTS prefs (
     tz             TEXT,                          -- IANA zone from the app; NULL: UTC
     digest_sent    TEXT,                          -- local date of the last digest slot handled
     digest_offered INTEGER NOT NULL DEFAULT 0,
-    write_access   INTEGER NOT NULL DEFAULT 0    -- the bot may message this user
+    write_access   INTEGER NOT NULL DEFAULT 0,   -- the bot may message this user
+    friends_view   TEXT NOT NULL DEFAULT 'percent'  -- what friends see: percent | full (friends.py)
 );
 -- Sold items, against the average price paid at the time (the basis of unrealized profit too).
 CREATE TABLE IF NOT EXISTS sales (
@@ -146,6 +149,21 @@ CREATE TABLE IF NOT EXISTS folders (
     name    TEXT NOT NULL,
     UNIQUE (user_id, name)
 );
+-- Friends see each other's results (friends.py decides what); stored both ways round.
+CREATE TABLE IF NOT EXISTS friends (
+    user_id   INTEGER NOT NULL,
+    friend_id INTEGER NOT NULL,
+    since     REAL NOT NULL,
+    PRIMARY KEY (user_id, friend_id)
+);
+-- Invite links. A user's newest code is the one the app hands out; older ones keep
+-- working until they expire, so a link sent a moment ago isn't cut short.
+CREATE TABLE IF NOT EXISTS friend_invites (
+    code       TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS friend_invites_user ON friend_invites (user_id, created_at);
 -- An admin's message to everyone the bot may write to; `cursor` makes it resumable.
 CREATE TABLE IF NOT EXISTS broadcasts (
     id          INTEGER PRIMARY KEY,
@@ -182,7 +200,7 @@ CREATE TABLE IF NOT EXISTS holding_history (
 """
 HOLDING_HISTORY_INDEX = "CREATE INDEX IF NOT EXISTS holding_history_user_day ON holding_history (user_id, day)"
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # A CS2 seller gets the buyer's price minus 5% Steam + 10% game fee.
 STEAM_FEE_PERCENT = 15
@@ -205,6 +223,12 @@ SYNC_EVERY = 86400
 MAX_FOLDERS = 10
 MAX_RECENT_PROFILES = 10
 MAX_FOLDER_NAME = 32
+MAX_FRIENDS = 100
+# An invite link works for a day, so one posted somewhere public soon stops working.
+# The app hands out a new one once the current is half that old, so a link just
+# shared still has at least half a day to go.
+INVITE_TTL = 86400
+INVITE_RENEW = INVITE_TTL / 2
 
 
 class StoreError(Exception):
@@ -338,6 +362,12 @@ class Store:
                 if "folder_id" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(holdings)")}:
                     self.conn.execute("ALTER TABLE holdings ADD COLUMN folder_id INTEGER")
                 self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', '9')")
+        if version < 10:
+            # friends and friend_invites come from SCHEMA; prefs gets what friends see.
+            with self.conn:
+                if "friends_view" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(prefs)")}:
+                    self.conn.execute("ALTER TABLE prefs ADD COLUMN friends_view TEXT NOT NULL DEFAULT 'percent'")
+                self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema', '10')")
 
     def _reconcile_holding_history(self) -> None:
         """Records quantities changed without this code (an older release, manual SQL).
@@ -424,6 +454,19 @@ class Store:
     def prune_events(self, before: float) -> int:
         with self.conn:
             return self.conn.execute("DELETE FROM events WHERE ts < ?", (before,)).rowcount
+
+    @contextmanager
+    def reader(self):
+        """This store on a read-only connection of its own, for reads in a worker thread
+        (the main connection belongs to the event loop). Only for methods that read."""
+        other = object.__new__(Store)
+        other.__dict__.update(self.__dict__)
+        other.conn = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True)
+        other.conn.row_factory = sqlite3.Row
+        try:
+            yield other
+        finally:
+            other.conn.close()
 
     def stats_readonly(self, now: float | None = None) -> dict:
         """`stats` on a connection of its own, so it can run in a worker thread.
@@ -669,6 +712,91 @@ class Store:
             return sum(self.conn.execute(
                 "UPDATE holdings SET folder_id = ? WHERE user_id = ? AND hash_name = ?",
                 (folder_id, user_id, name)).rowcount for name in hash_names)
+
+    # -- friends -------------------------------------------------------------
+
+    def invite_code(self, user_id: int, renew: bool = False, at: float | None = None) -> str:
+        """The code for a user's invite link: a new one on first use or once the newest is
+        past INVITE_RENEW (older ones keep working until they expire), and on `renew`,
+        which voids every link of theirs at once."""
+        at = time.time() if at is None else at
+        row = self.conn.execute(
+            "SELECT code, created_at FROM friend_invites WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+            (user_id,)).fetchone()
+        if row and not renew and at - row[1] < INVITE_RENEW:
+            return row[0]
+        code = secrets.token_urlsafe(9)  # 72 bits: links are not guessable
+        with self.conn:
+            if renew:
+                self.conn.execute("DELETE FROM friend_invites WHERE user_id = ?", (user_id,))
+            # Expired codes stay a while, so the bot can say "expired" rather than "unknown".
+            self.conn.execute("DELETE FROM friend_invites WHERE created_at < ?", (at - 7 * INVITE_TTL,))
+            self.conn.execute("INSERT INTO friend_invites VALUES (?, ?, ?)", (code, user_id, at))
+        return code
+
+    def invite_owner_code(self, user_id: int) -> str | None:
+        """The user's newest code, without making one."""
+        row = self.conn.execute(
+            "SELECT code FROM friend_invites WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", (user_id,)).fetchone()
+        return row[0] if row else None
+
+    def invite_owner(self, code: str, now: float | None = None) -> int | None:
+        """Whose link this is, while it works."""
+        owner, expired = self.invite_lookup(code, now)
+        return None if expired else owner
+
+    def invite_lookup(self, code: str, now: float | None = None) -> tuple[int | None, bool]:
+        """(owner, expired); (None, False) for a code that never was, or was replaced."""
+        row = self.conn.execute("SELECT user_id, created_at FROM friend_invites WHERE code = ?", (code,)).fetchone()
+        if row is None:
+            return None, False
+        return row[0], (time.time() if now is None else now) - row[1] >= INVITE_TTL
+
+    def add_friend(self, user_id: int, friend_id: int, at: float | None = None) -> str:
+        """"added", "already", "self" or "full" (either side has MAX_FRIENDS)."""
+        if user_id == friend_id:
+            return "self"
+        if self.are_friends(user_id, friend_id):
+            return "already"
+        counts = dict(self.conn.execute(
+            "SELECT user_id, COUNT(*) FROM friends WHERE user_id IN (?, ?) GROUP BY user_id",
+            (user_id, friend_id)).fetchall())
+        if max(counts.values(), default=0) >= MAX_FRIENDS:
+            return "full"
+        at = time.time() if at is None else at
+        with self.conn:
+            self.conn.executemany("INSERT OR IGNORE INTO friends VALUES (?, ?, ?)",
+                                  [(user_id, friend_id, at), (friend_id, user_id, at)])
+        return "added"
+
+    def remove_friend(self, user_id: int, friend_id: int) -> bool:
+        """Ends it for both: neither sees the other any more."""
+        with self.conn:
+            cur = self.conn.execute(
+                "DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+                (user_id, friend_id, friend_id, user_id))
+        return cur.rowcount > 0
+
+    def are_friends(self, user_id: int, friend_id: int) -> bool:
+        return self.conn.execute("SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?",
+                                 (user_id, friend_id)).fetchone() is not None
+
+    def friends(self, user_id: int) -> list[dict]:
+        """{user_id, first_name, username, since, view}, oldest friendship first."""
+        rows = self.conn.execute(
+            """SELECT f.friend_id AS user_id, u.first_name, u.username, f.since,
+                      COALESCE(p.friends_view, 'percent') AS view
+               FROM friends f LEFT JOIN users u ON u.user_id = f.friend_id
+               LEFT JOIN prefs p ON p.user_id = f.friend_id
+               WHERE f.user_id = ? ORDER BY f.since, f.friend_id""",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def user_names(self, user_id: int) -> dict:
+        """{first_name, username} as Telegram last gave them (None when unknown)."""
+        row = self.conn.execute("SELECT first_name, username FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        return {"first_name": row[0], "username": row[1]} if row else {"first_name": None, "username": None}
 
     # -- broadcasts ------------------------------------------------------------
 
@@ -1278,7 +1406,7 @@ class Store:
     # -- preferences -----------------------------------------------------------
 
     PREF_DEFAULTS = {"digest": "off", "digest_hour": 10, "tz": None, "digest_sent": None,
-                     "digest_offered": 0, "write_access": 0}
+                     "digest_offered": 0, "write_access": 0, "friends_view": "percent"}
 
     def prefs(self, user_id: int) -> dict:
         row = self.conn.execute("SELECT * FROM prefs WHERE user_id = ?", (user_id,)).fetchone()
