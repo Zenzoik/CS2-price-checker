@@ -113,7 +113,7 @@
       sort_value: "Value", sort_profitPct: "Profit, %", sort_profit: "Profit, {cur}", sort_qty: "Quantity",
       sort_price: "Price each", sort_name: "Name", sort_added: "Recently added", sort_change24h: "Change, 24h",
       removeConfirm: "Remove {name} from the portfolio?",
-      justNow: "just now", updated: "updated {ago}", unpriced: "{n} without a price",
+      justNow: "just now", updated: "Updated {ago}", refreshFailed: "Couldn't refresh the prices.", unpriced: "{n} without a price",
       kind_sell: "Lowest Steam listing", kind_buy: "Highest Steam buy order",
       afterFee: "after the 15% fee",
       retry: "Tap to try again",
@@ -267,7 +267,7 @@
       sort_value: "Стоимость", sort_profitPct: "Прибыль, %", sort_profit: "Прибыль, {cur}", sort_qty: "Количество",
       sort_price: "Цена за шт.", sort_name: "Название", sort_added: "Недавно добавленные", sort_change24h: "Изменение, 24 ч",
       removeConfirm: "Убрать {name} из портфеля?",
-      justNow: "только что", updated: "обновлено {ago}", unpriced: "без цены: {n}",
+      justNow: "только что", updated: "Обновлено {ago}", refreshFailed: "Не удалось обновить цены.", unpriced: "без цены: {n}",
       kind_sell: "Мин. цена продажи Steam", kind_buy: "Макс. заявка на покупку Steam",
       afterFee: "за вычетом комиссии 15%",
       retry: "Нажмите, чтобы повторить",
@@ -421,7 +421,7 @@
       sort_value: "Вартість", sort_profitPct: "Прибуток, %", sort_profit: "Прибуток, {cur}", sort_qty: "Кількість",
       sort_price: "Ціна за шт.", sort_name: "Назва", sort_added: "Нещодавно додані", sort_change24h: "Зміна, 24 год",
       removeConfirm: "Прибрати {name} з портфеля?",
-      justNow: "щойно", updated: "оновлено {ago}", unpriced: "без ціни: {n}",
+      justNow: "щойно", updated: "Оновлено {ago}", refreshFailed: "Не вдалося оновити ціни.", unpriced: "без ціни: {n}",
       kind_sell: "Мін. ціна продажу Steam", kind_buy: "Макс. заявка на купівлю Steam",
       afterFee: "за вирахуванням комісії 15%",
       retry: "Натисніть, щоб повторити",
@@ -1093,7 +1093,7 @@
     const p = state.portfolio;
     const items = visibleItems(p);
     if (!items.length) {
-      mount([folderBar(p), h("p", { class: "message" }, t("emptyFolder")), bottomNav()], { keepScroll });
+      mount([folderBar(p), h("p", { class: "message" }, t("emptyFolder")), freshness([]), bottomNav()], { keepScroll });
       return;
     }
     const { value, trackedValue, pricedCost, noBuy, tracked, unpriced } = totals(items);
@@ -1114,7 +1114,6 @@
           },
         }, t(`range_${period}`))));
     const foot = [`${t(`kind_${p.price_kind}`)}, ${t("afterFee")}`];
-    if (p.updated_at) foot.push(t("updated", { ago: ago(p.updated_at) }));
     if (unpriced - pending > 0) foot.push(t("unpriced", { n: unpriced - pending }));
     const chartFocused = document.activeElement && document.activeElement.classList.contains("chart-plot-area");
     mount([
@@ -1131,7 +1130,8 @@
         state.folder == null && realizedLine(p.realized),
         pending > 0 && h("div", { class: "progress" },
           h("div", { class: "hero-sub hint num" }, t("pricing", { n: items.length - pending, total: items.length })),
-          progressBar((items.length - pending) / items.length))),
+          progressBar((items.length - pending) / items.length)),
+        freshness(items)),
       syncCard(p.sync),
       p.offer_digest && digestOffer(),
       chartSection(),
@@ -1153,7 +1153,6 @@
         } }, t("allItems"))),
       ...(watchSection(p) || []),
       h("p", { class: "foot hint" }, foot.join(" · ")),
-      state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
       bottomNav(),
     ], { keepScroll });
     if (chartFocused) {
@@ -1216,6 +1215,7 @@
         h("div", { class: "empty-title" }, t("emptyTitle")),
         h("p", { class: "empty-text" }, t("emptyText")),
         realizedLine(p.realized),
+        freshness([]),
       ), syncCard(p.sync), ...(watchSection(p) || []),
       bottomNav()]);
       return;
@@ -1224,7 +1224,7 @@
     const shown = visibleItems(p);
     if (!shown.length) {
       state.selected = null;
-      mount([folderBar(p), h("p", { class: "message" }, t("emptyFolder")), portfolioLinks(p), bottomNav()], { keepScroll });
+      mount([folderBar(p), h("p", { class: "message" }, t("emptyFolder")), freshness([]), portfolioLinks(p), bottomNav()], { keepScroll });
       return;
     }
     const { value, trackedValue, pricedCost, cost, unpriced, noBuy, tracked } = totals(shown);
@@ -1234,7 +1234,6 @@
     const items = sortItems(shown);
 
     const foot = [`${t(`kind_${p.price_kind}`)}, ${t("afterFee")}`];
-    if (p.updated_at) foot.push(t("updated", { ago: ago(p.updated_at) }));
     if (unpriced - pending > 0) foot.push(t("unpriced", { n: unpriced - pending }));
 
     mount([
@@ -1255,15 +1254,35 @@
         pending > 0 && h("div", { class: "progress" },
           h("div", { class: "hero-sub hint num" }, t("pricing", { n: shown.length - pending, total: shown.length })),
           progressBar((shown.length - pending) / shown.length)),
+        freshness(shown),
       ),
       !state.selected && syncCard(p.sync),
       toolbar(shown),
       h("ul", { class: "list" }, items.map(homeRow)),
       ...(!state.selected && watchSection(p) || []),
       h("p", { class: "foot hint" }, foot.join(" · ")),
-      state.stale && h("p", { class: "foot down" }, errorText(state.stale)),
       !state.selected && bottomNav(),
     ], { keepScroll });
+  }
+
+  // Last line of the summary: how old the prices of the items it sums up are, and,
+  // if the app couldn't reach the server, that the numbers may be older still.
+  // Quiet, but in sight; it only darkens once the prices are over an hour old.
+  // The oldest price counts, so a folder speaks for itself, but not one Steam
+  // keeps failing to give (a delisted item would say "9 days ago" for everything),
+  // unless all of them fail: then the whole refresh is stuck and that should show.
+  function freshness(items) {
+    const priced = items.filter((it) => it.price_at != null);
+    const ok = priced.filter((it) => !it.price_failing);
+    const stamps = (ok.length ? ok : priced).map((it) => it.price_at);
+    const oldest = stamps.length ? Math.min(...stamps) : null;
+    if (oldest == null && !state.stale) return null;
+    const old = oldest != null && Date.now() / 1000 - oldest > 3600;
+    return h("div", { class: `hero-fresh hint${old ? " old" : ""}` },
+      oldest != null && h("div", {}, t("updated", { ago: ago(oldest) })),
+      // A background poll failed: access is the user's to sort out, the rest retries by itself.
+      state.stale && h("div", { class: "down" },
+        ["auth", "private"].includes(state.stale.code) ? errorText(state.stale) : t("refreshFailed")));
   }
 
   // -- sorting -------------------------------------------------------------------

@@ -510,6 +510,9 @@ def test_api_add_edit_delete_flow(tmp_path):
         r = await client.post("/api/holdings", headers=auth(),
                               json={"hash_name": CASE, "qty": 10, "buy_price": 3.5, "mode": "add"})
         items = (await r.json())["items"]
+        data = await (await client.get("/api/portfolio", headers=auth())).json()
+        assert items[0].pop("price_at") == data["updated_at"] is not None
+        assert items[0].pop("price_failing") is False
         assert items[0] | {} == {"hash_name": CASE, "name": CASE, "icon": "abc", "qty": 10,
                                  "buy_price": 3.5, "price": 4.64, "pending": False, "change_24h": None,
                                  "change_7d": None, "liquidity": q["liquidity"], "folder": None}

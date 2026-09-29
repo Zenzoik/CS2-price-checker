@@ -1098,6 +1098,11 @@ def _holding_json(h) -> dict:
         "buy_price": _money(h.buy_cents),
         "price": _money(h.price_cents),
         "pending": h.price_checked is None,
+        # A folder's summary says how old its own prices are. "Failing": the last
+        # check got no price (delisted, or Steam erred), so the old one is kept.
+        "price_at": h.price_updated,
+        "price_failing": (h.price_checked is not None and h.price_updated is not None
+                          and h.price_checked > h.price_updated),
         "change_24h": (h.price_cents / h.yesterday_cents - 1
                        if h.price_cents is not None and h.yesterday_cents else None),
         "change_7d": (h.price_cents / h.week_ago_cents - 1
