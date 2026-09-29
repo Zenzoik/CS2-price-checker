@@ -2578,8 +2578,11 @@
     }
   }
 
-  async function drawCard(amounts) {
-    const W = 1080, H = 1350, X = 80;
+  // Two formats. Wide (1600×800) for messages: Telegram shows a photo across the
+  // bubble, so a landscape card fills it and its text comes out large. Tall
+  // (1080×1350) for stories, whose screen is portrait.
+  async function drawCard(amounts, wide) {
+    const W = wide ? 1600 : 1080, H = wide ? 800 : 1350, X = wide ? 72 : 80;
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
@@ -2592,6 +2595,30 @@
       let s = text;
       while (s.length > 1 && g.measureText(`${s}…`).width > max) s = s.slice(0, -1);
       return `${s.trimEnd()}…`;
+    };
+    // The headline shrinks to fit rather than lose digits.
+    const fitted = (text, max, weight, size) => {
+      let px = size;
+      g.font = font(weight, px);
+      while (px > 48 && g.measureText(text).width > max) g.font = font(weight, px -= 6);
+      return text;
+    };
+    // Up to two lines; the second ends in "…" when it still doesn't fit.
+    const wrap = (text, max) => {
+      if (g.measureText(text).width <= max) return [text];
+      const words = text.split(" ");
+      let first = "";
+      while (words.length && g.measureText(first ? `${first} ${words[0]}` : words[0]).width <= max) {
+        first = first ? `${first} ${words.shift()}` : words.shift();
+      }
+      if (!first) return [fit(text, max)];
+      return [first, fit(words.join(" "), max)];
+    };
+    const box = (x, y, w, h, r, fill) => {
+      g.fillStyle = fill;
+      g.beginPath();
+      if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h);
+      g.fill();
     };
 
     const bg = g.createLinearGradient(0, 0, W, H);
@@ -2608,85 +2635,101 @@
     const { value, trackedValue, pricedCost } = totals(items);
     const pnl = trackedValue - pricedCost;
     const ratio = pricedCost > 0 ? pnl / pricedCost : null;
+    const top = [...items].filter((it) => it.price != null)
+      .sort((a, b) => net(b.price) * b.qty - net(a.price) * a.qty).slice(0, wide ? 4 : 5);
+    const icons = await Promise.all(top.map((it) => loadIcon(it.icon)));
 
+    // The headline block: left column (wide) or top (tall).
+    const blockW = wide ? 640 : W - 2 * X;
+    const big = wide ? 150 : 128, mid = wide ? 54 : 52, small = wide ? 46 : 44;
     g.textBaseline = "alphabetic";
     g.fillStyle = colors.hint;
-    g.font = font(600, 40);
-    g.fillText(fit(t("cardTitle") + (folder ? ` · ${folder.name}` : ""), W - 2 * X), X, 130);
+    g.font = font(600, wide ? 44 : 40);
+    g.fillText(fit(t("cardTitle") + (folder ? ` · ${folder.name}` : ""), blockW), X, wide ? 120 : 130);
 
-    // The headline: the value when amounts are on, else the profit in percent.
-    let y = 290;
-    g.font = font(800, 128);
+    // The value when amounts are on, else the profit in percent.
+    let y = wide ? 290 : 290;
     if (amounts) {
       g.fillStyle = colors.fg;
-      g.fillText(fit(money(value), W - 2 * X), X, y);
+      g.fillText(fitted(money(value), blockW, 800, big), X, y);
       if (ratio != null) {
-        y += 80;
-        g.font = font(600, 52);
+        y += wide ? 90 : 80;
+        g.font = font(600, mid);
         g.fillStyle = tone(ratio);
-        g.fillText(fit(`${t("cardProfit")} ${money(pnl, true)} · ${percent(ratio)}`, W - 2 * X), X, y);
+        g.fillText(fit(`${t("cardProfit")} ${money(pnl, true)}`, blockW), X, y);
+        y += wide ? 70 : 64;
+        g.fillText(percent(ratio), X, y);
       }
     } else if (ratio != null) {
       g.fillStyle = tone(ratio);
-      g.fillText(percent(ratio), X, y);
-      y += 70;
-      g.font = font(500, 44);
+      g.fillText(fitted(percent(ratio), blockW, 800, big), X, y);
+      y += wide ? 80 : 70;
+      g.font = font(500, small);
       g.fillStyle = colors.hint;
       g.fillText(t("cardProfit"), X, y);
     } else {
       g.fillStyle = colors.fg;
-      g.fillText(t("cardItems", { n: items.length }), X, y);
+      g.fillText(fitted(t("cardItems", { n: items.length }), blockW, 800, big), X, y);
     }
     const history = state.history;
     if (history && history.key === historyKey() && history.change_ratio != null) {
-      y += 70;
-      g.font = font(500, 44);
+      y += wide ? 70 : 70;
+      g.font = font(500, small);
       g.fillStyle = tone(history.change_ratio);
       g.fillText(`${t(`range_${state.period}`)}: ${percent(history.change_ratio)}`, X, y);
     }
 
-    // The top five by value: name, and the profit on the price paid (or the day's move).
-    const top = [...items].filter((it) => it.price != null)
-      .sort((a, b) => net(b.price) * b.qty - net(a.price) * a.qty).slice(0, 5);
-    const icons = await Promise.all(top.map((it) => loadIcon(it.icon)));
-    y = Math.max(y + 80, 520);
-    const ROW = 120;
+    // The top items by value: name, and the profit on the price paid (or the day's move).
+    // Wide: a right column filling the height; tall: rows under the headline.
+    const rx = wide ? 760 : X, rw = wide ? W - X - 760 : W - 2 * X;
+    const rowTop = wide ? 64 : Math.max(y + 80, 520);
+    const ROW = wide ? (H - 2 * 64) / 4 : 120, rowH = ROW - 16;
+    const icon = wide ? 116 : 92, nameSize = wide ? 44 : 42, sideSize = wide ? 52 : 44;
     top.forEach((it, i) => {
-      const rowY = y + i * ROW;
-      g.fillStyle = "rgba(255, 255, 255, 0.06)";
-      g.beginPath();
-      if (g.roundRect) g.roundRect(X, rowY, W - 2 * X, ROW - 16, 24); else g.rect(X, rowY, W - 2 * X, ROW - 16);
-      g.fill();
-      if (icons[i]) g.drawImage(icons[i], X + 18, rowY + 6, 92, 92);
-      else {
-        g.fillStyle = "rgba(255, 255, 255, 0.08)";
-        g.beginPath();
-        if (g.roundRect) g.roundRect(X + 22, rowY + 10, 84, 84, 16); else g.rect(X + 22, rowY + 10, 84, 84);
-        g.fill();
-      }
+      const rowY = rowTop + i * ROW;
+      box(rx, rowY, rw, rowH, 24, "rgba(255, 255, 255, 0.06)");
+      const iy = rowY + (rowH - icon) / 2;
+      if (icons[i]) g.drawImage(icons[i], rx + 18, iy, icon, icon);
+      else box(rx + 22, iy + 4, icon - 8, icon - 8, 16, "rgba(255, 255, 255, 0.08)");
+      const mid = rowY + rowH / 2;
       const gain = it.buy_price > 0 ? net(it.price) / it.buy_price - 1 : it.change_24h;
       const side = gain == null ? "" : percent(gain);
-      g.font = font(600, 44);
+      g.font = font(700, sideSize);
       const sideWidth = side ? g.measureText(side).width : 0;
-      g.fillStyle = gain == null ? colors.hint : tone(gain);
-      if (side) g.fillText(side, W - X - 28 - sideWidth, rowY + (amounts ? 50 : 66));
-      if (amounts) {
-        g.font = font(500, 34);
-        g.fillStyle = colors.hint;
-        const worth = money(net(it.price) * it.qty);
-        g.fillText(worth, W - X - 28 - g.measureText(worth).width, rowY + 90);
+      const worth = amounts ? money(net(it.price) * it.qty) : "";
+      g.font = font(500, sideSize * 0.7);
+      const worthWidth = worth ? g.measureText(worth).width : 0;
+      const right = rx + rw - 28;
+      if (side) {
+        g.font = font(700, sideSize);
+        g.fillStyle = gain == null ? colors.hint : tone(gain);
+        g.fillText(side, right - sideWidth, worth ? mid - 4 : mid + sideSize * 0.36);
       }
-      g.font = font(500, 42);
+      if (worth) {
+        g.font = font(500, sideSize * 0.7);
+        g.fillStyle = colors.hint;
+        g.fillText(worth, right - worthWidth, mid + sideSize * 0.75);
+      }
+      const nameX = rx + 18 + icon + 22;
+      const nameW = right - Math.max(sideWidth, worthWidth, 120) - 24 - nameX;
+      g.font = font(500, nameSize);
       g.fillStyle = colors.fg;
-      g.fillText(fit(it.name, W - 2 * X - 170 - Math.max(sideWidth, 200)), X + 136, rowY + 66);
+      const lines = wrap(it.name, nameW);
+      if (lines.length === 1) g.fillText(lines[0], nameX, mid + nameSize * 0.36);
+      else {
+        g.font = font(500, nameSize * 0.86);
+        const lines2 = wrap(it.name, nameW);
+        g.fillText(lines2[0], nameX, mid - 6);
+        if (lines2[1]) g.fillText(lines2[1], nameX, mid + nameSize * 0.86);
+      }
     });
 
-    g.font = font(600, 38);
+    g.font = font(600, wide ? 42 : 38);
     g.fillStyle = colors.fg;
-    g.fillText(t("cardFooter"), X, H - 96);
-    g.font = font(500, 38);
+    g.fillText(fit(t("cardFooter"), blockW), X, H - (wide ? 110 : 96));
+    g.font = font(500, wide ? 42 : 38);
     g.fillStyle = themeColor("button_color", "#2481cc");
-    g.fillText(p.bot ? `t.me/${p.bot}` : location.host, X, H - 48);
+    g.fillText(fit(p.bot ? `t.me/${p.bot}` : location.host, blockW), X, H - (wide ? 56 : 48));
     return canvas;
   }
 
@@ -2713,7 +2756,7 @@
 
     async function redraw() {
       const run = ++drawing;
-      const next = await drawCard(amounts);
+      const next = await drawCard(amounts, true);
       if (run !== drawing || !app.contains(preview)) return;
       canvas = next;
       preview.src = canvas.toDataURL("image/jpeg", 0.8);
@@ -2732,7 +2775,7 @@
       state.busy = true;
       buttons();
       try {
-        const blob = await jpeg(canvas);
+        const blob = await jpeg(mode === "story" ? await drawCard(amounts, false) : canvas);
         if (!blob) throw Object.assign(new Error("too big"), { code: "generic" });
         const data = await api(`/api/share?mode=${mode}`, { method: "POST", raw: blob });
         haptic.ok();

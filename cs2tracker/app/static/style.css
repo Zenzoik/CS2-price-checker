@@ -371,7 +371,7 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 .overview-hero { padding-right: 92px; }
 .share-box { margin-top: 14px; }
 .share-preview {
-  display: block; width: 100%; aspect-ratio: 4 / 5; border-radius: var(--radius);
+  display: block; width: 100%; aspect-ratio: 2 / 1; border-radius: var(--radius);
   background: var(--skeleton); object-fit: cover;
 }
 .broadcast-text {
