@@ -214,6 +214,64 @@ def test_share_is_rate_limited(tmp_path):
     run(tmp_path, scenario, bot=FakeBot())
 
 
+def test_icons_are_served_from_our_origin_for_known_items_only(tmp_path):
+    fetched = []
+
+    async def fake_fetch(name):
+        fetched.append(name)
+        if name == "broken":
+            raise ValueError("HTTP 404")
+        return "image/png", b"\x89PNG" + name.encode()
+
+    market = FakeMarket()
+    store, prices = make_service(tmp_path, market)
+    store.remember_items([(CASE, CASE, "abc-DEF_1"), ("B", "B", "broken")])
+    app = create_app(settings(), store, prices, icon_fetch=fake_fetch)
+
+    async def main():
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            for _ in range(2):
+                r = await client.get("/api/icon", params={"name": "abc-DEF_1"}, headers=auth())
+                assert r.status == 200 and await r.read() == b"\x89PNGabc-DEF_1"
+                assert r.headers["Content-Type"] == "image/png"
+            assert fetched == ["abc-DEF_1"]                   # cached
+            r = await client.get("/api/icon", params={"name": "https://evil.example/x"}, headers=auth())
+            assert r.status == 404 and fetched == ["abc-DEF_1"]  # not an open proxy
+            assert (await client.get("/api/icon", params={"name": "broken"}, headers=auth())).status == 502
+            assert (await client.get("/api/icon", params={"name": "abc-DEF_1"})).status == 401
+        finally:
+            await client.close()
+    asyncio.run(main())
+
+
+def test_icon_fetch_reads_the_whole_body_when_it_arrives_in_pieces(monkeypatch):
+    from aiohttp import web
+    from cs2tracker.app import server
+    body = b"\x89PNG" + bytes(range(256)) * 60 + b"IEND"
+
+    async def slow(request):
+        resp = web.StreamResponse(headers={"Content-Type": "image/png"})
+        await resp.prepare(request)
+        for i in range(0, len(body), 4000):
+            await resp.write(body[i:i + 4000])
+            await asyncio.sleep(0.01)
+        return resp
+
+    async def main():
+        app = web.Application()
+        app.router.add_get("/{icon}/96fx96f", slow)
+        test_server = TestServer(app)
+        await test_server.start_server()
+        try:
+            monkeypatch.setattr(server, "ICON_URL", str(test_server.make_url("/")) + "{icon}/96fx96f")
+            assert await server.fetch_icon("x") == ("image/png", body)
+        finally:
+            await test_server.close()
+    asyncio.run(main())
+
+
 class UploadSession:
     def __init__(self, body='{"ok": true, "result": {"id": "p1"}}'):
         self.body = body

@@ -464,6 +464,9 @@ class Store:
                 items,
             )
 
+    def known_icon(self, icon: str) -> bool:
+        return self.conn.execute("SELECT 1 FROM items WHERE icon = ? LIMIT 1", (icon,)).fetchone() is not None
+
     def item(self, hash_name: str) -> tuple[str, str | None] | None:
         row = self.conn.execute("SELECT name, icon FROM items WHERE hash_name = ?", (hash_name,)).fetchone()
         return (row["name"], row["icon"]) if row else None

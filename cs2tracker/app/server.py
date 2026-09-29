@@ -16,6 +16,7 @@ from collections import defaultdict, deque
 from datetime import datetime
 from pathlib import Path
 
+import aiohttp
 from aiohttp import web
 
 from ..steam import ItemNotFound, PrivateInventory, ProfileNotFound, RateLimited, SteamError, parse_profile
@@ -50,6 +51,12 @@ SHARES_PER_USER = (10, 600)
 SHARE_TTL = 86400
 MAX_SHARES = 200
 MAX_BROADCAST = 4000
+# Item pictures for the share card, fetched here: Steam's CDN sends no CORS
+# header, so the app can't draw them on a canvas it then exports.
+ICON_URL = "https://community.fastly.steamstatic.com/economy/image/{icon}/96fx96f"
+ICONS_PER_MINUTE = 60
+MAX_ICON = 256 * 1024
+MAX_ICONS_CACHED = 500
 SHARE_TEXTS = {
     "en": "My CS2 portfolio. Track yours: {link}",
     "ru": "Мой портфель CS2. Следите за своим: {link}",
@@ -95,6 +102,10 @@ EXPORT_LIMITER = web.AppKey("export_limiter", object)
 SHARE_LIMITER = web.AppKey("share_limiter", object)
 # picture id -> (time, JPEG bytes)
 SHARES = web.AppKey("shares", dict)
+ICON_FETCH = web.AppKey("icon_fetch", object)
+ICON_LIMITER = web.AppKey("icon_limiter", object)
+# icon -> (content type, bytes)
+ICONS = web.AppKey("icons", dict)
 # user id -> monotonic time we last wrote their last_seen (at most once a minute)
 TOUCHED = web.AppKey("touched", dict)
 TOUCH_EVERY = 60
@@ -541,6 +552,43 @@ async def share(request: web.Request) -> web.Response:
     return web.json_response({"sent": True})
 
 
+async def icon(request: web.Request) -> web.Response:
+    """An item's picture from Steam, served from our origin. Only icons of known items."""
+    name = request.query.get("name", "")
+    if not 0 < len(name) <= 2048 or not request.app[STORE].known_icon(name):
+        raise ApiError(404, "not_found", "Unknown picture")
+    cache = request.app[ICONS]
+    hit = cache.get(name)
+    if hit is None:
+        request.app[ICON_LIMITER].check(request[USER_ID])
+        try:
+            hit = await request.app[ICON_FETCH](name)
+        except Exception as e:
+            log.info("Icon fetch failed: %s", e)
+            raise ApiError(502, "steam", "Steam is not responding") from e
+        if len(cache) >= MAX_ICONS_CACHED:
+            cache.pop(next(iter(cache)))
+        cache[name] = hit
+    # Private: the request is authenticated, so no shared cache may keep it.
+    return web.Response(body=hit[1], content_type=hit[0], headers={"Cache-Control": "private, max-age=86400"})
+
+
+async def fetch_icon(name: str) -> tuple[str, bytes]:
+    timeout = aiohttp.ClientTimeout(total=8)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(ICON_URL.format(icon=name)) as resp:
+            kind = resp.headers.get("Content-Type", "").split(";")[0]
+            if resp.status != 200 or kind not in ("image/png", "image/jpeg", "image/webp"):
+                raise ValueError(f"HTTP {resp.status} {kind}")
+            # content.read(n) returns what has arrived so far, not the whole body.
+            data = bytearray()
+            async for chunk in resp.content.iter_chunked(65536):
+                data += chunk
+                if len(data) > MAX_ICON:
+                    raise ValueError("too big")
+            return kind, bytes(data)
+
+
 def _share_text(request: web.Request) -> str:
     bot = request.app[BOT]
     username = getattr(bot, "username", None)
@@ -936,7 +984,7 @@ def _holding_json(h) -> dict:
 
 
 def create_app(settings: AppSettings, store: Store, prices: PriceService,
-               inventories: InventoryService | None = None, bot=None) -> web.Application:
+               inventories: InventoryService | None = None, bot=None, icon_fetch=None) -> web.Application:
     app = web.Application(middlewares=[security_headers, authenticate], client_max_size=MAX_BODY)
     app[SETTINGS] = settings
     # Versioned asset URLs: Telegram's WebView caches hard, a new URL cannot be stale.
@@ -958,6 +1006,9 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app[EXPORT_LIMITER] = RateLimiter(*EXPORTS_PER_USER)
     app[SHARE_LIMITER] = RateLimiter(*SHARES_PER_USER)
     app[SHARES] = {}
+    app[ICON_FETCH] = icon_fetch or fetch_icon
+    app[ICON_LIMITER] = RateLimiter(ICONS_PER_MINUTE)
+    app[ICONS] = {}
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR)
     app.router.add_get("/api/portfolio", portfolio)
@@ -980,6 +1031,7 @@ def create_app(settings: AppSettings, store: Store, prices: PriceService,
     app.router.add_post("/api/export", export)
     app.router.add_post("/api/share", share)
     app.router.add_get("/share/{name}", shared_picture)
+    app.router.add_get("/api/icon", icon)
     app.router.add_get("/api/admin/broadcast", admin_broadcast)
     app.router.add_post("/api/admin/broadcast", start_broadcast)
     app.router.add_post("/api/admin/broadcast/cancel", cancel_broadcast)

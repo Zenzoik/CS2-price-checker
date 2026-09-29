@@ -2546,16 +2546,36 @@
 
   const canStory = () => nativeUi && tg.isVersionAtLeast("7.8") && ["android", "ios"].includes(tg.platform);
 
-  function loadIcon(icon) {
-    return new Promise((resolve) => {
-      if (!icon) { resolve(null); return; }
-      const img = new Image();
-      img.crossOrigin = "anonymous"; // without CORS it fails to load rather than taint the canvas
-      const timer = setTimeout(() => resolve(null), 2500);
-      img.onload = () => { clearTimeout(timer); resolve(img); };
-      img.onerror = () => { clearTimeout(timer); resolve(null); };
-      img.src = `${ICON_BASE}${encodeURIComponent(icon)}/96fx96f`;
-    });
+  // Steam's CDN sends no CORS header, and a picture from it would taint the canvas
+  // (no JPEG export then), so our server passes the icon on from its own origin.
+  // The CSP allows data: but not blob: images, hence the data URL fallback.
+  async function loadIcon(icon) {
+    if (!icon) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch(`/api/icon?name=${encodeURIComponent(icon)}`,
+        { headers: { Authorization: `tma ${initData}` }, signal: ctrl.signal });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      if (window.createImageBitmap) return await createImageBitmap(blob);
+      const url = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function drawCard(amounts) {
