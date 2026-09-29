@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS events (
     n       INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
+-- Per-user lookups (the digest offer, "only pressed /start" in the statistics)
+-- would otherwise scan every event, on the event loop.
+CREATE INDEX IF NOT EXISTS events_user ON events (user_id, kind);
 CREATE TABLE IF NOT EXISTS prices (
     hash_name  TEXT PRIMARY KEY,
     cents      INTEGER,          -- NULL: no listings / buy orders, or never fetched
@@ -227,6 +230,7 @@ def stored_schema(path: Path | str) -> int | None:
 
 class Store:
     def __init__(self, path: Path | str, currency: str):
+        self.path = Path(path)
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
@@ -401,10 +405,23 @@ class Store:
         with self.conn:
             return self.conn.execute("DELETE FROM events WHERE ts < ?", (before,)).rowcount
 
-    def stats(self, now: float | None = None, days: int = 14) -> dict:
+    def stats_readonly(self, now: float | None = None) -> dict:
+        """`stats` on a connection of its own, so it can run in a worker thread.
+
+        Its aggregates read months of events: on the event loop they would stall
+        every user's request, the bot and the price refresh meanwhile.
+        """
+        conn = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            return self.stats(now, conn=conn)
+        finally:
+            conn.close()
+
+    def stats(self, now: float | None = None, days: int = 14, conn: sqlite3.Connection | None = None) -> dict:
         """Usage numbers for the admin screen. Days are UTC calendar days."""
         now = time.time() if now is None else now
-        one = lambda sql, *args: self.conn.execute(sql, args).fetchone()[0]  # noqa: E731
+        conn = self.conn if conn is None else conn
+        one = lambda sql, *args: conn.execute(sql, args).fetchone()[0]  # noqa: E731
         day = 86400
         users = {
             "total": one("SELECT COUNT(*) FROM users"),
@@ -417,26 +434,26 @@ class Store:
                             "(SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.kind != 'bot')"),
         }
         start = (int(now // day) - days + 1) * day
-        active = dict(self.conn.execute(
+        active = dict(conn.execute(
             "SELECT CAST(ts / 86400 AS INTEGER), COUNT(DISTINCT user_id) FROM events "
             "WHERE ts >= ? GROUP BY 1", (start,)).fetchall())
-        new = dict(self.conn.execute(
+        new = dict(conn.execute(
             "SELECT CAST(first_seen / 86400 AS INTEGER), COUNT(*) FROM users WHERE first_seen >= ? GROUP BY 1",
             (start,)).fetchall())
         daily = [{"day": d * day, "active": active.get(d, 0), "new": new.get(d, 0)}
                  for d in range(int(start // day), int(now // day) + 1)]
-        actions = dict(self.conn.execute(
+        actions = dict(conn.execute(
             "SELECT kind, SUM(n) FROM events WHERE ts >= ? GROUP BY kind", (now - 7 * day,)).fetchall())
         top = [
             {"hash_name": r[0], "name": r[1], "holders": r[2], "qty": r[3]}
-            for r in self.conn.execute(
+            for r in conn.execute(
                 """SELECT h.hash_name, COALESCE(i.name, h.hash_name), COUNT(*), SUM(h.qty)
                    FROM holdings h LEFT JOIN items i ON i.hash_name = h.hash_name
                    GROUP BY h.hash_name ORDER BY 3 DESC, 4 DESC LIMIT 5""")
         ]
         recent = [
             {"id": r[0], "username": r[1], "first_name": r[2], "first_seen": r[3], "last_seen": r[4], "items": r[5]}
-            for r in self.conn.execute(
+            for r in conn.execute(
                 """SELECT u.user_id, u.username, u.first_name, u.first_seen, u.last_seen,
                           (SELECT COUNT(*) FROM holdings h WHERE h.user_id = u.user_id)
                    FROM users u ORDER BY u.last_seen DESC LIMIT 10""")
@@ -501,7 +518,8 @@ class Store:
                 folder_id: int | None = None) -> None:
         """Adds a purchase; an existing position gets the weighted average price.
 
-        If either side's price is unknown the average is unknown too (NULL).
+        A lot whose price is unknown keeps the position's average, so a known
+        price paid is never lost; a position whose price is unknown stays unknown.
         `folder_id` places a new position; an existing one stays where it is.
         """
         with self.conn:
@@ -514,8 +532,9 @@ class Store:
         cur = self.conn.execute(
             """INSERT INTO holdings (user_id, hash_name, qty, buy_cents, added_at, folder_id) VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id, hash_name) DO UPDATE SET
-                 buy_cents = (qty * buy_cents + excluded.qty * excluded.buy_cents
-                              + (qty + excluded.qty) / 2) / (qty + excluded.qty),
+                 buy_cents = CASE WHEN excluded.buy_cents IS NULL THEN buy_cents
+                              ELSE (qty * buy_cents + excluded.qty * excluded.buy_cents
+                                    + (qty + excluded.qty) / 2) / (qty + excluded.qty) END,
                  qty = qty + excluded.qty,
                  buy_at_market = 0
                WHERE qty + excluded.qty <= ?""",

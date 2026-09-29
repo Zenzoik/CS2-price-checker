@@ -37,6 +37,11 @@ HEADERS = {
 }
 
 
+def _text(value: str) -> str:
+    """A text cell a spreadsheet won't run: "=…", "+…", "-…", "@…" would be a formula."""
+    return "'" + value if value[:1] in ("=", "+", "-", "@", "\t", "\r") else value
+
+
 def _formats(lang: str):
     comma = lang != "en"
     delimiter = ";" if comma else ","
@@ -72,7 +77,7 @@ def holdings_csv(store: Store, user_id: int, lang_code: str | None) -> bytes:
         value = None if net is None else net * h.qty
         profit = None if net is None or h.buy_cents is None else (net - h.buy_cents) * h.qty
         pct = net / h.buy_cents - 1 if net is not None and h.buy_cents else None
-        rows.append([h.name, h.hash_name, folders.get(h.folder_id, ""), h.qty, amount(h.buy_cents),
+        rows.append([_text(h.name), _text(h.hash_name), _text(folders.get(h.folder_id, "")), h.qty, amount(h.buy_cents),
                      amount(h.price_cents), amount(net), amount(value), amount(profit), ratio(pct), store.currency])
     return _csv(rows, delimiter)
 
@@ -87,7 +92,7 @@ def sales_csv(store: Store, user_id: int, lang_code: str | None) -> bytes | None
     rows = [HEADERS[lang]["sales"]]
     for s in reversed(sales):  # oldest first, like a ledger
         profit = None if s["buy_cents"] is None else s["qty"] * (s["price_cents"] - s["buy_cents"])
-        rows.append([time.strftime("%Y-%m-%d", time.gmtime(s["sold_at"])), s["name"], s["hash_name"], s["qty"],
+        rows.append([time.strftime("%Y-%m-%d", time.gmtime(s["sold_at"])), _text(s["name"]), _text(s["hash_name"]), s["qty"],
                      amount(s["price_cents"]), amount(s["buy_cents"]), amount(s["qty"] * s["price_cents"]),
                      amount(profit), store.currency])
     return _csv(rows, delimiter)

@@ -3,6 +3,8 @@
 import asyncio
 import sqlite3
 
+import aiohttp
+
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -14,7 +16,14 @@ from cs2tracker.app.telegram import BotApiError, TelegramBot
 
 from test_app import CASE, FakeMarket, FakeResp, auth, make_service, result, settings
 
-JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 100
+def jpeg(width=1600, height=800):
+    """The segments the server reads: SOI, an APP0 segment, the frame header, EOI."""
+    frame = b"\x08" + height.to_bytes(2, "big") + width.to_bytes(2, "big") + b"\x03" + b"\x01\x11\x00" * 3
+    return (b"\xff\xd8" + b"\xff\xe0\x00\x10" + b"JFIF\0" + b"\0" * 9
+            + b"\xff\xc0" + (len(frame) + 2).to_bytes(2, "big") + frame + b"\xff\xda\x00\x02" + b"\0" * 50 + b"\xff\xd9")
+
+
+JPEG = jpeg()
 
 
 class FakeBot:
@@ -33,10 +42,10 @@ class FakeBot:
     async def send_photo(self, user_id, data, caption=""):
         self.photos.append((user_id, data, caption))
 
-    async def prepare_share(self, user_id, url, caption=""):
+    async def prepare_share(self, user_id, url, caption="", size=None, thumb_url=None):
         if self.prepare_fails:
             raise BotApiError("savePreparedInlineMessage: Bad Request: method not found")
-        self.prepared.append((user_id, url, caption))
+        self.prepared.append((user_id, url, caption, size, thumb_url))
         return "prep-1"
 
 
@@ -139,6 +148,14 @@ def test_csv_follows_the_language(tmp_path):
         f"1970-01-01;{CASE};{CASE};1;13,00;10,00;13,00;3,00;UAH"
 
 
+def test_csv_text_cells_never_become_formulas(tmp_path):
+    store = Store(tmp_path / "t.db", "UAH")
+    store.save_folder(1, '=HYPERLINK("http://x","y")')
+    store.add_lot(1, CASE, 1, 100, folder_id=1)
+    row = holdings_csv(store, 1, "en").decode("utf-8-sig").splitlines()[1]
+    assert '\'=HYPERLINK' in row and ',"=' not in row
+
+
 def test_api_export_sends_files_through_the_bot(tmp_path):
     bot = FakeBot()
 
@@ -179,6 +196,11 @@ def test_share_story_serves_the_picture_publicly(tmp_path):
         assert picture.headers["Content-Type"] == "image/jpeg"
         assert (await client.get("/share/nope.jpg")).status == 404
         assert (await client.post("/api/share?mode=story", headers=auth(), data=b"GIF89a")).status == 400
+        # Anything else behind a JPEG's first bytes would be hosted on our domain.
+        for fake in (b"\xff\xd8\xff<html><script>alert(1)</script></html>\xff\xd9",  # starts and ends right
+                     JPEG[:-30],  # cut off in transfer: would show a grey band in the chat
+                     b"\xff\xd8\xff\xda\x00\x02\xff\xd9"):  # no frame header
+            assert (await client.post("/api/share?mode=story", headers=auth(), data=fake)).status == 400
         assert (await client.post("/api/share?mode=other", headers=auth(), data=JPEG)).status == 400
         assert (await (await client.get("/api/portfolio", headers=auth())).json())["bot"] == "cstrackerbot"
         assert (await client.post("/api/share?mode=story", data=JPEG)).status == 401
@@ -204,9 +226,49 @@ def test_share_message_prepares_or_falls_back_to_the_chat(tmp_path, prepare_fail
             assert body == {"sent": True} and bot.photos[0][:2] == (42, JPEG)
         else:
             assert body == {"prepared": "prep-1"} and bot.prepared[0][1].endswith(".jpg")
+            assert bot.prepared[0][3] == (1600, 800)  # so the client doesn't crop the wide card
         caption = (bot.photos or bot.prepared)[0][2]
         assert caption == 'My CS2 portfolio. <a href="https://t.me/cstrackerbot">Track yours</a>'
     run(tmp_path, scenario, bot=bot)
+
+
+def test_a_shared_message_gets_a_small_thumbnail_of_its_own(tmp_path):
+    """Telegram for iOS shows the sender the thumbnail, cut off if it hadn't fully loaded."""
+    bot = FakeBot()
+    thumb = jpeg(800, 400)
+
+    def form(photo, small):
+        data = aiohttp.FormData()
+        data.add_field("photo", photo, filename="card.jpg", content_type="image/jpeg")
+        data.add_field("thumb", small, filename="thumb.jpg", content_type="image/jpeg")
+        return data
+
+    async def scenario(client, store):
+        r = await client.post("/api/share?mode=message", headers=auth(), data=form(JPEG, thumb))
+        assert (await r.json()) == {"prepared": "prep-1"}
+        _, url, _, size, thumb_url = bot.prepared[0]
+        assert size == (1600, 800) and thumb_url == url.replace(".jpg", ".thumb.jpg")
+        assert await (await client.get("/share/" + url.rsplit("/", 1)[1])).read() == JPEG
+        assert await (await client.get("/share/" + thumb_url.rsplit("/", 1)[1])).read() == thumb
+        r = await client.post("/api/share?mode=message", headers=auth(), data=form(JPEG, thumb[:-40]))
+        assert r.status == 400  # a cut-off thumbnail is exactly what must never reach the chat
+        # A plain JPEG body still works, and has no thumbnail to serve.
+        body = await (await client.post("/api/share?mode=story", headers=auth(), data=JPEG)).json()
+        assert (await client.get("/share/" + body["url"].rsplit("/", 1)[1].replace(".jpg", ".thumb.jpg"))).status == 404
+    run(tmp_path, scenario, bot=bot)
+
+
+def test_a_user_keeps_only_their_newest_pictures(tmp_path):
+    async def scenario(client, store):
+        async def upload(user):
+            body = await (await client.post("/api/share?mode=story", headers=auth(user), data=JPEG)).json()
+            return "/share/" + body["url"].rsplit("/", 1)[1]
+        other = await upload(7)
+        mine = [await upload(42) for _ in range(4)]
+        assert (await client.get(mine[0])).status == 404  # made room for the fourth
+        for path in mine[1:] + [other]:
+            assert (await client.get(path)).status == 200
+    run(tmp_path, scenario, bot=FakeBot())
 
 
 def test_share_is_rate_limited(tmp_path):
@@ -291,9 +353,10 @@ def test_bot_uploads_files_and_prepares_shares():
     asyncio.run(bot.send_document(5, "a.csv", b"x,y"))
     url, _, form = session.posts[0]
     assert url.endswith("/sendDocument") and form is not None
-    assert asyncio.run(bot.prepare_share(5, "https://example.com/share/k.jpg", "hi")) == "p1"
+    assert asyncio.run(bot.prepare_share(5, "https://example.com/share/k.jpg", "hi", size=(1600, 800))) == "p1"
     _, params, _ = session.posts[1]
     assert params["result"]["photo_url"] == params["result"]["thumbnail_url"]
+    assert (params["result"]["photo_width"], params["result"]["photo_height"]) == (1600, 800)
     assert params["result"]["parse_mode"] == "HTML"
     assert params["result"]["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://t.me/cstrackerbot"
     session.body = '{"ok": false, "description": "Forbidden: bot was blocked by the user"}'

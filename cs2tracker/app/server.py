@@ -6,11 +6,13 @@ Every /api request carries the Mini App's signed init data in
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import html
 import json
 import logging
 import math
+import re
 import secrets
 import time
 from collections import defaultdict, deque
@@ -51,6 +53,8 @@ SHARES_PER_USER = (10, 600)
 # Share pictures live in memory, long enough for Telegram to fetch them.
 SHARE_TTL = 86400
 MAX_SHARES = 200
+# A user's older pictures make room for their newer ones, not for someone else's.
+SHARES_KEPT_PER_USER = 3
 MAX_BROADCAST = 4000
 # Item pictures for the share card, fetched here: Steam's CDN sends no CORS
 # header, so the app can't draw them on a canvas it then exports.
@@ -108,7 +112,7 @@ PREVIEWS = web.AppKey("previews", dict)
 BOT = web.AppKey("bot", object)
 EXPORT_LIMITER = web.AppKey("export_limiter", object)
 SHARE_LIMITER = web.AppKey("share_limiter", object)
-# picture id -> (time, JPEG bytes)
+# picture id -> (time, JPEG bytes, user id, thumbnail JPEG or None)
 SHARES = web.AppKey("shares", dict)
 ICON_FETCH = web.AppKey("icon_fetch", object)
 ICON_LIMITER = web.AppKey("icon_limiter", object)
@@ -168,6 +172,11 @@ async def security_headers(request: web.Request, handler):
         resp = await handler(request)
     except web.HTTPException as e:
         resp = e
+    except Exception:
+        # Left to aiohttp, a bug would come out as a bare text 500 without these headers.
+        log.exception("Unhandled error on %s %s", request.method, request.path)
+        resp = (ApiError(500, "generic", "Internal error") if request.path.startswith("/api/")
+                else web.HTTPInternalServerError())
     resp.headers.setdefault("Content-Security-Policy", CSP)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -259,9 +268,8 @@ async def portfolio_history(request: web.Request) -> web.Response:
     folder = request.query.get("folder")
     folder_id = None
     if folder:
-        if not folder.isdigit():
-            raise ApiError(400, "invalid", "Unknown folder")
-        folder_id = int(folder)
+        # isdigit() would pass "²", which int() refuses.
+        folder_id = _row_id(int(folder) if re.fullmatch(r"[0-9]{1,19}", folder) else None, "Unknown folder")
     return web.json_response(request.app[STORE].portfolio_history(request[USER_ID], days, folder_id=folder_id))
 
 
@@ -523,24 +531,34 @@ async def share(request: web.Request) -> web.Response:
     message for shareMessage, or, when Telegram refuses that, the picture sent
     to the user's chat to forward (then "sent" is true). mode=chat: that
     picture straight away, for clients without shareMessage.
+
+    The body is the JPEG, or a form with "photo" and a small "thumb" (see
+    `_share_thumbnail`).
     """
     mode = request.query.get("mode")
     if mode not in ("story", "message", "chat"):
         raise ApiError(400, "invalid", "mode must be story, message or chat")
     user_id = request[USER_ID]
-    data = await request.read()
-    if not 3 < len(data) <= MAX_BODY or not data.startswith(b"\xff\xd8\xff"):
+    data, thumb = await _share_upload(request)
+    # Served publicly from our domain, and a cut-off file would reach the chat
+    # with a grey band: each must be a whole JPEG.
+    size = _jpeg_size(data)
+    if size is None or (thumb is not None and _jpeg_size(thumb) is None):
         raise ApiError(400, "invalid", "Send a JPEG picture")
     request.app[SHARE_LIMITER].check(user_id)
     shares = request.app[SHARES]
     now = time.monotonic()
-    for key in [k for k, (at, _) in shares.items() if now - at > SHARE_TTL]:
+    for key in [k for k, (at, *_) in shares.items() if now - at > SHARE_TTL]:
+        del shares[key]
+    mine = [k for k, entry in shares.items() if entry[2] == user_id]
+    for key in mine[:max(0, len(mine) - SHARES_KEPT_PER_USER + 1)]:
         del shares[key]
     while len(shares) >= MAX_SHARES:
         shares.pop(next(iter(shares)))
     key = secrets.token_urlsafe(18)
-    shares[key] = (now, data)
-    url = f"{request.app[SETTINGS].public_url.rstrip('/')}/share/{key}.jpg"
+    shares[key] = (now, data, user_id, thumb)
+    base = f"{request.app[SETTINGS].public_url.rstrip('/')}/share/{key}"
+    url = f"{base}.jpg"
     _event(request, "share")
     if mode == "story":
         return web.json_response({"url": url, "text": _share_text(request)})
@@ -549,7 +567,10 @@ async def share(request: web.Request) -> web.Response:
         raise ApiError(503, "unavailable", "The bot is not running")
     if mode == "message":
         try:
-            return web.json_response({"prepared": await bot.prepare_share(user_id, url, _share_text(request, True))})
+            # Without its size the client guesses a square and crops the wide card.
+            return web.json_response({"prepared": await bot.prepare_share(
+                user_id, url, _share_text(request, True), size=size,
+                thumb_url=f"{base}.thumb.jpg" if thumb is not None else None)})
         except Exception as e:  # e.g. an older Bot API or inline sharing disabled
             log.info("Prepared share for %s failed, sending the picture instead: %s", user_id, e)
     try:
@@ -558,6 +579,57 @@ async def share(request: web.Request) -> web.Response:
         log.warning("Share picture to %s failed: %s", user_id, e)
         raise ApiError(502, "send_failed", "The bot could not send the picture") from e
     return web.json_response({"sent": True})
+
+
+async def _share_upload(request: web.Request) -> tuple[bytes, bytes | None]:
+    """(photo, thumbnail or None) from a raw JPEG body or a form with "photo" and "thumb".
+
+    Why a thumbnail of its own: Telegram for iOS draws the sender's copy of a
+    shared photo from `thumbnail_url` alone, and when the send is confirmed it
+    moves that download, finished or not, into the real photo; the rest then
+    comes from Telegram's re-encoded file and decodes as a grey band. A small
+    thumbnail is complete long before the user picks a chat.
+    """
+    if request.content_type != "multipart/form-data":
+        return await request.read(), None
+    form = await request.post()  # bounded by client_max_size, like read()
+
+    def field(name: str) -> bytes | None:
+        value = form.get(name)
+        return value.file.read() if isinstance(value, web.FileField) else None
+    return field("photo") or b"", field("thumb")
+
+
+def _jpeg_size(data: bytes) -> tuple[int, int] | None:
+    """(width, height) of a complete JPEG, or None for anything else.
+
+    Walks the marker segments up to the frame header; the file must also end
+    with the end-of-image marker, so an upload cut short is refused.
+    """
+    if not data.startswith(b"\xff\xd8") or not data.endswith(b"\xff\xd9"):
+        return None
+    i = 2
+    while i + 4 <= len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker == 0xFF:  # fill byte
+            i += 1
+            continue
+        length = int.from_bytes(data[i + 2:i + 4], "big")
+        if length < 2:
+            return None
+        # SOF0-SOF15, except DHT (C4), JPG (C8) and DAC (CC), carry the frame size.
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            if i + 9 > len(data):
+                return None
+            height = int.from_bytes(data[i + 5:i + 7], "big")
+            width = int.from_bytes(data[i + 7:i + 9], "big")
+            return (width, height) if width and height else None
+        if marker == 0xDA:  # image data before any frame header
+            return None
+        i += 2 + length
+    return None
 
 
 async def icon(request: web.Request) -> web.Response:
@@ -611,10 +683,14 @@ def _share_text(request: web.Request, as_html: bool = False) -> str:
 async def shared_picture(request: web.Request) -> web.Response:
     """Public: Telegram's servers fetch it. The name is an unguessable token."""
     name = request.match_info["name"]
-    hit = request.app[SHARES].get(name.removesuffix(".jpg"))
+    thumb = name.endswith(".thumb.jpg")  # tokens never contain a dot
+    hit = request.app[SHARES].get(name.removesuffix(".jpg").removesuffix(".thumb"))
     if not name.endswith(".jpg") or hit is None or time.monotonic() - hit[0] > SHARE_TTL:
         raise web.HTTPNotFound()
-    return web.Response(body=hit[1], content_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+    body = hit[3] if thumb else hit[1]
+    if body is None:
+        raise web.HTTPNotFound()
+    return web.Response(body=body, content_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 async def admin_broadcast(request: web.Request) -> web.Response:
@@ -816,7 +892,8 @@ async def save_prefs(request: web.Request) -> web.Response:
 
 async def admin_stats(request: web.Request) -> web.Response:
     _admin_only(request)
-    return web.json_response(request.app[STORE].stats())
+    # Aggregates over months of events: off the event loop, which serves everyone else.
+    return web.json_response(await asyncio.to_thread(request.app[STORE].stats_readonly))
 
 
 async def _ensure_known(request: web.Request, hash_name: str) -> None:

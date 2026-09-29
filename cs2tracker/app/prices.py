@@ -32,6 +32,10 @@ MAX_CONSECUTIVE_ERRORS = 3
 SOURCE_COOLDOWN = 900
 # How long a user request may wait for Steam before giving up.
 INTERACTIVE_WAIT = 10.0
+# An item Steam just said it doesn't know isn't asked about again this soon
+# (typos, repeated taps). Short: Steam also answers "not found" under load.
+NOT_FOUND_TTL = 120
+NOT_FOUND_CACHE_SIZE = 1000
 
 
 class SteamBusy(SteamError):
@@ -106,6 +110,7 @@ class PriceService:
         self._gate = SteamGate()
         self._lock = self._gate.lock
         self._searches: dict[str, tuple[float, list[SearchResult]]] = {}
+        self._not_found: dict[str, float] = {}  # hash name -> when Steam said so
         self._wake = asyncio.Event()
         # Set after a pass that stored prices: alerts are checked then.
         self.passed = asyncio.Event()
@@ -155,6 +160,9 @@ class PriceService:
         fresh = self.fresh_price(hash_name)
         if fresh:
             return fresh[0]
+        missing = self._not_found.get(hash_name)
+        if missing is not None and self._clock() - missing < NOT_FOUND_TTL:
+            raise ItemNotFound(hash_name)
         charge(1)
         try:
             result = await self._call(self.fetcher.fetch, hash_name, wait=self.interactive_wait,
@@ -162,6 +170,12 @@ class PriceService:
                                       on_result=lambda q: self._store_quote(hash_name, q))
         except CurrencyMismatch as e:
             raise SteamError(str(e)) from e
+        except ItemNotFound:
+            self._not_found.pop(hash_name, None)
+            if len(self._not_found) >= NOT_FOUND_CACHE_SIZE:
+                self._not_found.pop(next(iter(self._not_found)))
+            self._not_found[hash_name] = self._clock()
+            raise
         if isinstance(result, tuple):  # fetched by a request that held the lock before us
             return result[0]
         return to_cents(result.price(self.fetcher.kind))

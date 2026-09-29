@@ -153,13 +153,22 @@ class TelegramBot:
         url = f"https://t.me/{self.username}" if self.username else self.settings.public_url
         return {"inline_keyboard": [[{"text": texts(lang)["track"], "url": url}]]}
 
-    async def prepare_share(self, user_id: int, photo_url: str, caption: str = "") -> str:
-        """A prepared message for Telegram.WebApp.shareMessage (`caption` is HTML); raises BotApiError."""
-        result = await self.call("savePreparedInlineMessage", user_id=user_id, result={
+    async def prepare_share(self, user_id: int, photo_url: str, caption: str = "",
+                            size: tuple[int, int] | None = None, thumb_url: str | None = None) -> str:
+        """A prepared message for Telegram.WebApp.shareMessage (`caption` is HTML); raises BotApiError.
+
+        `size` (width, height) lets the client lay the photo out without cropping it.
+        `thumb_url`: a small copy; Telegram for iOS shows the sender that one.
+        """
+        photo = {
             "type": "photo", "id": photo_url.rsplit("/", 1)[-1][:64], "photo_url": photo_url,
-            "thumbnail_url": photo_url, "caption": caption[:1000], "parse_mode": "HTML",
+            "thumbnail_url": thumb_url or photo_url, "caption": caption[:1000], "parse_mode": "HTML",
             "reply_markup": self._share_markup(user_id),
-        }, allow_user_chats=True, allow_group_chats=True, allow_channel_chats=True)
+        }
+        if size:
+            photo["photo_width"], photo["photo_height"] = size
+        result = await self.call("savePreparedInlineMessage", user_id=user_id, result=photo,
+                                 allow_user_chats=True, allow_group_chats=True, allow_channel_chats=True)
         return result["id"]
 
     def _redact(self, text: str) -> str:
@@ -250,7 +259,10 @@ class TelegramBot:
         if self.store is not None:
             self.store.touch_user(user, "bot")
             self.store.log_event(user["id"], "bot")
-            self.store.set_prefs(user["id"], write_access=1)  # a private chat exists now
+            if self.settings.allows(user["id"]):
+                # A private chat exists now. Not for users a private bot turns
+                # away: broadcasts skip them, so they'd only inflate the audience.
+                self.store.set_prefs(user["id"], write_access=1)
         t = texts(user.get("language_code"))
         if not self.settings.allows(user["id"]):
             await self.call("sendMessage", chat_id=chat["id"], text=t["private"])

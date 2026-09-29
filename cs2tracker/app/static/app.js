@@ -54,11 +54,11 @@
       notSet: "not set", noBuyPrice: "{qty} pcs · price paid not set", withoutBuy: "{n} without a price paid",
       hasNoPrice: "You have {qty} without a price paid.", becomesNoPrice: "Will become {qty}, price paid not set.",
       importN: "Import {n}", selected: "{n} of {total} selected", selectAll: "Select all", selectNone: "Clear",
-      mode_none: "No price", mode_market: "Today's", mode_manual: "Manual",
+      mode_none: "No price", mode_market: "Today's", mode_manual: "Manual", importPriceTitle: "Price paid",
       modeHint_none: "Only the total value is shown. You can add prices later in each item.",
       modeHint_market: "Price paid = what selling today would bring, so profit starts from zero today.",
       modeHint_manual: "Enter the price paid for each item; leave empty if unknown.",
-      room: "room for {n}", pnlScope: "on {n} of {total}",
+      room: "room for {n}", pnlScope: "on\u00a0{n}\u00a0of\u00a0{total}",
       noSellable: "No marketable CS2 items in this inventory.",
       storageNote: "Items inside storage units aren't visible to Steam's public inventory.",
       err_not_profile: "That doesn't look like a Steam profile link.",
@@ -74,6 +74,7 @@
       position: "{qty} at {price}",
       has: "You have {qty} at {price} each.",
       becomes: "Will become {qty} at {price} each.",
+      becomesKeep: "Will become {qty} at {price} each: the new ones have no price paid, so the average stays.",
       removeFull: "Remove from portfolio",
       pricing: "Fetching prices: {n} of {total}",
       select: "Select",
@@ -108,7 +109,7 @@
       st_oldest: "Oldest price",
       st_none: "No data yet",
       sortBy: "Sort by", sortAsc: "Ascending", sortDesc: "Descending",
-      sort_value: "Value", sort_profitPct: "Profit, %", sort_profit: "Profit", sort_qty: "Quantity",
+      sort_value: "Value", sort_profitPct: "Profit, %", sort_profit: "Profit, {cur}", sort_qty: "Quantity",
       sort_price: "Price each", sort_name: "Name", sort_added: "Recently added", sort_change24h: "Change, 24h",
       removeConfirm: "Remove {name} from the portfolio?",
       justNow: "just now", updated: "updated {ago}", unpriced: "{n} without a price",
@@ -133,7 +134,7 @@
       realizedProfit: "Realized profit", sales: "Sales", saleSub: "{qty} × {price} · {date}",
       noSales: "No sales yet. Record one from an item's screen.",
       undoConfirm: "Undo this sale? {qty} × {name} go back to the portfolio at the price paid.",
-      undoHint: "Tap a sale to undo it.",
+      undoSale: "Undo",
       syncNew: "New in your Steam inventory: {n}", syncReview: "Review", syncGone: "Gone from your Steam inventory. Sold?",
       syncDismiss: "Dismiss", syncTitle: "Inventory check", sync_on: "On", sync_off: "Off",
       syncHint: "Once a day the bot looks at the Steam inventory you imported from and tells you about new items and ones that are gone. Nothing is added or removed by itself.",
@@ -159,7 +160,8 @@
       broadcastDone: "Last one: {sent} delivered, {failed} failed · {ago}", broadcastCancelled: "Last one was stopped after {done} of {total}",
       err_folder_exists: "There is already a folder with this name.", err_folders_full: "At most 10 folders.",
       err_send_failed: "The bot couldn't send it. Press Start in the bot chat and try again.",
-      err_no_write_access: "Allow the bot to message you first.", err_unavailable: "Not available right now.",
+      err_no_write_access: "Allow the bot to message you (or press Start in the bot chat), then try again.",
+      askWriteAccess: "The bot needs your permission to send you the file. Allow it?", exporting: "Sending…", err_unavailable: "Not available right now.",
       err_broadcast_running: "A broadcast is still going out.",
       act_export: "Exports", act_share: "Shares",
     },
@@ -204,11 +206,11 @@
       notSet: "не указана", noBuyPrice: "{qty} шт. · цена покупки не указана", withoutBuy: "без цены покупки: {n}",
       hasNoPrice: "У вас {qty} шт. без цены покупки.", becomesNoPrice: "Станет {qty} шт., цена покупки не указана.",
       importN: "Импортировать {n}", selected: "Выбрано {n} из {total}", selectAll: "Выбрать все", selectNone: "Снять все",
-      mode_none: "Без цены", mode_market: "Текущая", mode_manual: "Вручную",
+      mode_none: "Без цены", mode_market: "Текущая", mode_manual: "Вручную", importPriceTitle: "Цена покупки",
       modeHint_none: "Покажем только общую стоимость. Цену покупки можно указать позже в карточке предмета.",
       modeHint_market: "Цена покупки = сколько вы получили бы при продаже сегодня; прибыль считается с нуля.",
       modeHint_manual: "Укажите цену покупки за штуку; пустые останутся без цены.",
-      room: "можно {n}", pnlScope: "по {n} из {total}",
+      room: "можно {n}", pnlScope: "по\u00a0{n}\u00a0из\u00a0{total}",
       noSellable: "В этом инвентаре нет предметов CS2, которые можно продать.",
       storageNote: "Предметы внутри хранилищ (Storage Unit) Steam не показывает.",
       err_not_profile: "Это не похоже на ссылку на профиль Steam.",
@@ -224,6 +226,7 @@
       position: "{qty} шт. · по {price}",
       has: "У вас {qty} шт. по {price}.",
       becomes: "Станет {qty} шт. по {price}.",
+      becomesKeep: "Станет {qty} шт. по {price}: у новых нет цены покупки, средняя не меняется.",
       removeFull: "Убрать из портфеля",
       pricing: "Получаем цены: {n} из {total}",
       select: "Выбрать",
@@ -258,7 +261,7 @@
       st_oldest: "Самая старая цена",
       st_none: "Пока нет данных",
       sortBy: "Сортировка", sortAsc: "По возрастанию", sortDesc: "По убыванию",
-      sort_value: "Стоимость", sort_profitPct: "Прибыль, %", sort_profit: "Прибыль, ₴", sort_qty: "Количество",
+      sort_value: "Стоимость", sort_profitPct: "Прибыль, %", sort_profit: "Прибыль, {cur}", sort_qty: "Количество",
       sort_price: "Цена за шт.", sort_name: "Название", sort_added: "Недавно добавленные", sort_change24h: "Изменение, 24 ч",
       removeConfirm: "Убрать {name} из портфеля?",
       justNow: "только что", updated: "обновлено {ago}", unpriced: "без цены: {n}",
@@ -283,7 +286,7 @@
       realizedProfit: "Реализованная прибыль", sales: "Продажи", saleSub: "{qty} шт. × {price} · {date}",
       noSales: "Продаж пока нет. Отметить продажу можно в карточке предмета.",
       undoConfirm: "Отменить продажу? {name}, {qty} шт., вернутся в портфель по цене покупки.",
-      undoHint: "Нажмите на продажу, чтобы отменить её.",
+      undoSale: "Отменить",
       syncNew: "Новое в инвентаре Steam: {n}", syncReview: "Посмотреть", syncGone: "Пропало из инвентаря Steam. Продали?",
       syncDismiss: "Скрыть", syncTitle: "Проверка инвентаря", sync_on: "Вкл.", sync_off: "Выкл.",
       syncHint: "Раз в день бот смотрит инвентарь Steam, из которого вы импортировали предметы, и сообщает о новых и пропавших. Сам ничего не добавляет и не удаляет.",
@@ -309,7 +312,8 @@
       broadcastDone: "Последнее: доставлено {sent}, ошибок {failed} · {ago}", broadcastCancelled: "Последнее остановлено после {done} из {total}",
       err_folder_exists: "Папка с таким названием уже есть.", err_folders_full: "Не больше 10 папок.",
       err_send_failed: "Бот не смог отправить. Нажмите «Старт» в чате с ботом и попробуйте снова.",
-      err_no_write_access: "Сначала разрешите боту писать вам.", err_unavailable: "Сейчас недоступно.",
+      err_no_write_access: "Разрешите боту писать вам (или нажмите «Старт» в чате с ботом) и попробуйте снова.",
+      askWriteAccess: "Боту нужно разрешение, чтобы прислать вам файл. Разрешить?", exporting: "Отправляем…", err_unavailable: "Сейчас недоступно.",
       err_broadcast_running: "Предыдущая рассылка ещё идёт.",
       act_export: "Экспорты", act_share: "Поделились",
     },
@@ -354,11 +358,11 @@
       notSet: "не вказана", noBuyPrice: "{qty} шт. · ціна купівлі не вказана", withoutBuy: "без ціни купівлі: {n}",
       hasNoPrice: "У вас {qty} шт. без ціни купівлі.", becomesNoPrice: "Стане {qty} шт., ціна купівлі не вказана.",
       importN: "Імпортувати {n}", selected: "Вибрано {n} з {total}", selectAll: "Вибрати всі", selectNone: "Зняти всі",
-      mode_none: "Без ціни", mode_market: "Поточна", mode_manual: "Вручну",
+      mode_none: "Без ціни", mode_market: "Поточна", mode_manual: "Вручну", importPriceTitle: "Ціна купівлі",
       modeHint_none: "Покажемо лише загальну вартість. Ціну купівлі можна вказати пізніше в картці предмета.",
       modeHint_market: "Ціна купівлі = скільки ви отримали б при продажу сьогодні; прибуток рахується з нуля.",
       modeHint_manual: "Вкажіть ціну купівлі за штуку; порожні залишаться без ціни.",
-      room: "можна {n}", pnlScope: "за {n} з {total}",
+      room: "можна {n}", pnlScope: "за\u00a0{n}\u00a0з\u00a0{total}",
       noSellable: "У цьому інвентарі немає предметів CS2, які можна продати.",
       storageNote: "Предмети всередині сховищ (Storage Unit) Steam не показує.",
       err_not_profile: "Це не схоже на посилання на профіль Steam.",
@@ -374,6 +378,7 @@
       position: "{qty} шт. · по {price}",
       has: "У вас {qty} шт. по {price}.",
       becomes: "Стане {qty} шт. по {price}.",
+      becomesKeep: "Стане {qty} шт. по {price}: у нових немає ціни купівлі, середня не змінюється.",
       removeFull: "Прибрати з портфеля",
       pricing: "Отримуємо ціни: {n} з {total}",
       select: "Вибрати",
@@ -408,7 +413,7 @@
       st_oldest: "Найстаріша ціна",
       st_none: "Поки немає даних",
       sortBy: "Сортування", sortAsc: "За зростанням", sortDesc: "За спаданням",
-      sort_value: "Вартість", sort_profitPct: "Прибуток, %", sort_profit: "Прибуток, ₴", sort_qty: "Кількість",
+      sort_value: "Вартість", sort_profitPct: "Прибуток, %", sort_profit: "Прибуток, {cur}", sort_qty: "Кількість",
       sort_price: "Ціна за шт.", sort_name: "Назва", sort_added: "Нещодавно додані", sort_change24h: "Зміна, 24 год",
       removeConfirm: "Прибрати {name} з портфеля?",
       justNow: "щойно", updated: "оновлено {ago}", unpriced: "без ціни: {n}",
@@ -433,7 +438,7 @@
       realizedProfit: "Реалізований прибуток", sales: "Продажі", saleSub: "{qty} шт. × {price} · {date}",
       noSales: "Продажів поки немає. Позначити продаж можна в картці предмета.",
       undoConfirm: "Скасувати продаж? {name}, {qty} шт., повернуться до портфеля за ціною купівлі.",
-      undoHint: "Натисніть на продаж, щоб скасувати його.",
+      undoSale: "Скасувати",
       syncNew: "Нове в інвентарі Steam: {n}", syncReview: "Переглянути", syncGone: "Зникло з інвентарю Steam. Продали?",
       syncDismiss: "Приховати", syncTitle: "Перевірка інвентарю", sync_on: "Увімк.", sync_off: "Вимк.",
       syncHint: "Раз на день бот переглядає інвентар Steam, з якого ви імпортували предмети, і повідомляє про нові та зниклі. Сам нічого не додає і не видаляє.",
@@ -459,7 +464,8 @@
       broadcastDone: "Останнє: доставлено {sent}, помилок {failed} · {ago}", broadcastCancelled: "Останнє зупинено після {done} з {total}",
       err_folder_exists: "Папка з такою назвою вже є.", err_folders_full: "Не більше 10 папок.",
       err_send_failed: "Бот не зміг надіслати. Натисніть «Старт» у чаті з ботом і спробуйте знову.",
-      err_no_write_access: "Спершу дозвольте боту писати вам.", err_unavailable: "Зараз недоступно.",
+      err_no_write_access: "Дозвольте боту писати вам (або натисніть «Старт» у чаті з ботом) і спробуйте знову.",
+      askWriteAccess: "Боту потрібен дозвіл, щоб надіслати вам файл. Дозволити?", exporting: "Надсилаємо…", err_unavailable: "Зараз недоступно.",
       err_broadcast_running: "Попередня розсилка ще триває.",
       act_export: "Експорти", act_share: "Поділилися",
     },
@@ -494,6 +500,12 @@
     }).format(value);
   }
 
+  // "₴", "$": for labels such as "Profit, ₴".
+  function currencySymbol() {
+    const parts = numberFormat({ style: "currency", currency: state.currency, currencyDisplay: "narrowSymbol" }).formatToParts(0);
+    return (parts.find((p) => p.type === "currency") || { value: state.currency }).value;
+  }
+
   function percent(ratio) {
     return numberFormat({ style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(ratio);
   }
@@ -519,19 +531,33 @@
 
   const decimalMark = numberFormat({}).formatToParts(1.5).find((p) => p.type === "decimal").value;
 
-  // Accepts "464", "12,5", "1 234,50", "1,234.50", "1.234,50"; rounds to cents.
+  // Accepts "464", "12,5", "1 234,50", "1,234.50", "1.234,50", "1.234.567"; rounds to cents.
+  // Separators that can't be thousands ("12.5.3", "1,2,3") are a typo, not a number:
+  // guessing would silently turn a price into one ten times bigger.
   function parseAmount(text) {
-    let s = String(text).replace(/[\s']/g, "");
-    if (!/^[\d.,]+$/.test(s)) return null;
+    const s = String(text).replace(/[\s']/g, "");
+    if (!/^[\d.,]+$/.test(s) || !/\d/.test(s)) return null;
+    const seps = s.replace(/\d/g, "");
     const last = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
-    if (last !== -1) {
-      const frac = s.slice(last + 1);
-      const head = s.slice(0, last).replace(/[.,]/g, "");
+    const mark = s[last];
+    const head = s.slice(0, last), frac = s.slice(last + 1);
+    let plain;
+    if (!seps) {
+      plain = s;
+    } else if (seps.length === 1) {
       // "1,234" / "1.234": a lone separator with 3 digits after it groups thousands.
-      const grouping = frac.length === 3 && !/[.,]/.test(s.slice(0, last)) && s[last] !== decimalMark;
-      s = grouping ? head + frac : `${head}.${frac}`;
+      plain = frac.length === 3 && mark !== decimalMark ? head + frac : `${head}.${frac}`;
+    } else if (!seps.includes(mark === "." ? "," : ".")) {
+      // One kind, several times: only thousands ("1.234.567").
+      if (!new RegExp(`^\\d{1,3}(\\${mark}\\d{3})+$`).test(s)) return null;
+      plain = s.split(mark).join("");
+    } else {
+      // Both: the last one is the decimal mark, the other groups thousands.
+      const other = mark === "." ? "," : ".";
+      if (head.includes(mark) || !new RegExp(`^\\d{1,3}(\\${other}\\d{3})*$`).test(head)) return null;
+      plain = `${head.split(other).join("")}.${frac}`;
     }
-    const n = Math.round(Number(s) * 100) / 100;
+    const n = Math.round(Number(plain) * 100) / 100;
     return Number.isFinite(n) && n <= 1e8 ? n : null;
   }
 
@@ -561,6 +587,14 @@
       if (c == null || c === false) continue;
       el.append(c instanceof Node ? c : document.createTextNode(String(c)));
     }
+    return el;
+  }
+
+  // The big number on top. Long amounts shrink (CSS reads --chars) instead of
+  // running under the buttons beside them on narrow screens.
+  function heroValue(text, extraClass = "") {
+    const el = h("div", { class: `hero-value num${extraClass ? ` ${extraClass}` : ""}` }, text);
+    el.style.setProperty("--chars", String(text.length));
     return el;
   }
 
@@ -684,7 +718,7 @@
 
   // -- API ----------------------------------------------------------------------
 
-  // raw: a Blob sent as is (the share picture), with its own type.
+  // raw: a Blob sent as is (the share picture), with its own type, or a FormData.
   async function api(path, { method = "GET", body, raw, signal } = {}) {
     let res;
     let data = null;
@@ -692,7 +726,8 @@
       res = await fetch(path, {
         method, signal,
         headers: Object.assign({ Authorization: `tma ${initData}` },
-          raw ? { "Content-Type": raw.type } : body ? { "Content-Type": "application/json" } : {}),
+          raw instanceof FormData ? {} : raw ? { "Content-Type": raw.type }
+            : body ? { "Content-Type": "application/json" } : {}),
         body: raw || (body ? JSON.stringify(body) : undefined),
       });
       data = await res.json().catch(() => null);
@@ -935,6 +970,8 @@
       h("span", { class: "chart-label bottom hint num" }, money(low)),
     ]);
     const info = h("div", { class: "chart-info hint num" });
+    const legend = points.some((p) => p.changed) && h("div", { class: "chart-legend hint" },
+      h("span", { class: "chart-dot change static", "aria-hidden": "true" }), t("compositionChanged"));
     let selected = -1;
     const pick = (i) => {
       if (i === selected) return;
@@ -943,6 +980,8 @@
       at(focus, coords[i]);
       const text = `${shortDay(point.day)} · ${money(point.value)}${point.changed ? ` · ${t("compositionChanged")}` : ""}`;
       info.textContent = text;
+      // Hidden, not removed: the chart must not jump while the finger moves.
+      if (legend) legend.style.visibility = point.changed ? "hidden" : "";
       plot.setAttribute("aria-valuenow", String(i));
       plot.setAttribute("aria-valuetext", text);
     };
@@ -974,8 +1013,7 @@
         h("span", {}, shortDay(points[0].day)),
         points.length > 1 && h("span", {}, shortDay(points[points.length - 1].day))),
       info,
-      points.some((p) => p.changed) && h("div", { class: "chart-legend hint" },
-        h("span", { class: "chart-dot change static", "aria-hidden": "true" }), t("compositionChanged")));
+      legend);
   }
 
   function chartSection() {
@@ -1047,7 +1085,7 @@
       h("section", { class: "overview-hero" },
         shareButton(),
         bellButton(),
-        h("div", { class: "hero-value num" }, money(value)),
+        heroValue(money(value)),
         periodChange(),
         pricedCost > 0 && h("div", { class: "hero-sub hint num" }, `${t("profitLabel")} `,
           h("span", { class: trend(pnl / pricedCost) }, `${money(pnl, true)} · ${percent(pnl / pricedCost)}`),
@@ -1166,7 +1204,7 @@
       !state.selected && folderBar(p),
       h("section", { class: "hero" },
         !state.selected && bellButton(),
-        h("div", { class: "hero-value num" }, money(value)),
+        heroValue(money(value)),
         pricedCost > 0 && h("div", { class: `hero-pnl num ${trend(pnl / pricedCost)}` },
           `${money(pnl, true)} · ${percent(pnl / pricedCost)}`,
           // Say what the profit covers when some items have no price paid.
@@ -1233,7 +1271,8 @@
   // "Value ↓": the name opens the platform's own picker, the arrow flips direction.
   function sortControl() {
     const select = h("select", { class: "sort-select", "aria-label": t("sortBy") },
-      Object.keys(SORTS).map((key) => h("option", { value: key, selected: key === sort.key }, t(`sort_${key}`))));
+      Object.keys(SORTS).map((key) => h("option", { value: key, selected: key === sort.key },
+        t(`sort_${key}`, { cur: currencySymbol() }))));
     select.addEventListener("change", () => {
       sort.key = select.value;
       sort.dir = SORTS[sort.key][1];
@@ -1547,7 +1586,7 @@
     const toggleAll = h("button", { type: "button", class: "link-btn" });
     const sides = new Map(); // hash name -> function that refreshes the row's right side
 
-    const segmented = h("div", { class: "segmented", role: "radiogroup" });
+    const segmented = h("div", { class: "segmented", role: "radiogroup", "aria-label": t("importPriceTitle") });
     const modes = ["none", "market", "manual"].map((m) => h("button", {
       type: "button", role: "radio",
       onclick: () => {
@@ -1645,6 +1684,7 @@
     });
 
     box.replaceChildren(
+      h("div", { class: "section-title hint import-title" }, t("importPriceTitle")),
       segmented,
       modeHint,
       h("div", { class: "import-head" }, count, toggleAll),
@@ -2262,9 +2302,11 @@
   function salesView(sales, r, rerender) {
     if (!sales.length) return [h("p", { class: "message" }, t("noSales"))];
     const ratio = r.profit != null && r.cost > 0 ? r.profit / r.cost : null;
-    const undo = async (sale) => {
+    const undo = async (sale, button) => {
       if (state.busy || !(await confirmUser(t("undoConfirm", { qty: sale.qty, name: sale.name })))) return;
       state.busy = true;
+      button.disabled = true;
+      button.textContent = "…";
       try {
         const data = await api("/api/sales/delete", { method: "POST", body: { id: sale.id } });
         setPortfolio(data.portfolio);
@@ -2273,33 +2315,38 @@
       } catch (e) {
         haptic.fail();
         alertUser(errorText(e));
+        button.disabled = false;
+        button.textContent = t("undoSale");
       }
       state.busy = false;
     };
     return [
       h("section", { class: "hero" },
         r.profit != null
-          ? h("div", { class: `hero-value num ${trend(ratio != null ? ratio : r.profit)}` }, money(r.profit, true))
-          : h("div", { class: "hero-value num" }, money(r.proceeds)),
+          ? heroValue(money(r.profit, true), trend(ratio != null ? ratio : r.profit))
+          : heroValue(money(r.proceeds)),
         h("div", { class: "hero-sub hint num" }, r.profit != null ? t("realizedProfit") : t("received"),
           ratio != null && ` · ${percent(ratio)}`,
           r.profit != null && r.unknown > 0 && ` · ${t("pnlScope", { n: r.count - r.unknown, total: r.count })}`),
         r.profit != null && h("div", { class: "hero-sub hint num" }, `${t("received")} ${money(r.proceeds)}`)),
       h("ul", { class: "list" }, sales.map((sale) => {
         const gain = sale.buy_price > 0 ? sale.price / sale.buy_price - 1 : null;
-        return tappable(h("li", { class: "row" },
+        // Undoing puts items back: its own button, not a tap anywhere on the row.
+        return h("li", { class: "row plain" },
           thumb(sale.icon),
           h("div", { class: "row-main" },
             h("div", { class: "row-title" }, sale.name),
             h("div", { class: "row-sub hint num" },
-              t("saleSub", { qty: sale.qty, price: money(sale.price), date: localDate(sale.sold_at) }))),
+              t("saleSub", { qty: sale.qty, price: money(sale.price), date: localDate(sale.sold_at) })),
+            h("button", { type: "button", class: "link-btn undo-sale", onclick: (e) => {
+              haptic.tap();
+              undo(sale, e.currentTarget);
+            } }, t("undoSale"))),
           h("div", { class: "row-side num" },
             h("div", { class: "row-value" }, money(sale.qty * sale.price)),
             sale.profit != null && h("div", { class: `row-pnl ${trend(gain != null ? gain : sale.profit)}` },
-              money(sale.profit, true))),
-        ), () => { haptic.tap(); undo(sale); });
+              money(sale.profit, true))));
       })),
-      h("p", { class: "foot hint" }, t("undoHint")),
     ];
   }
 
@@ -2427,6 +2474,7 @@
       if (select.value === "new") { showFolders(() => showHome()); return; }
       if (!names.length || state.busy) return;
       state.busy = true;
+      select.disabled = true;
       try {
         await moveTo(names, select.value === "none" ? null : Number(select.value));
         haptic.ok();
@@ -2514,13 +2562,30 @@
   // -- export ---------------------------------------------------------------------
   // The bot sends the CSV files to the chat: that works in every Telegram client.
 
-  async function exportCsv() {
+  async function exportCsv(event) {
     if (state.busy) return;
+    const link = event && event.currentTarget;
+    const label = link && link.textContent;
     haptic.tap();
-    const granted = await ensureWriteAccess();
+    let granted = await ensureWriteAccess();
     state.busy = true;
+    if (link) {
+      link.disabled = true;
+      link.textContent = t("exporting");
+    }
     try {
-      await api("/api/export", { method: "POST", body: { write_access: granted === true ? true : undefined } });
+      for (let asked = false; ; asked = true) {
+        try {
+          await api("/api/export", { method: "POST", body: { write_access: granted === true ? true : undefined } });
+          break;
+        } catch (e) {
+          // Declined before: ask once more, now that it is clearly what the file needs.
+          if (e.code !== "no_write_access" || asked || !nativeUi || !tg.isVersionAtLeast("6.9")
+              || !(await confirmUser(t("askWriteAccess")))) throw e;
+          granted = await ensureWriteAccess();
+          if (granted !== true) throw e;
+        }
+      }
       haptic.ok();
       alertUser(t("exported"));
     } catch (e) {
@@ -2528,6 +2593,10 @@
       alertUser(errorText(e));
     }
     state.busy = false;
+    if (link && link.isConnected) {
+      link.disabled = false;
+      link.textContent = label;
+    }
   }
 
   // -- share card -----------------------------------------------------------------
@@ -2733,15 +2802,29 @@
     return canvas;
   }
 
-  function jpeg(canvas) {
+  // The server takes up to 256 KB per request.
+  function jpeg(canvas, limit = 240 * 1024) {
     const at = (quality) => new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
     return (async () => {
-      for (const quality of [0.88, 0.75, 0.6]) {
+      for (const quality of [0.88, 0.75, 0.6, 0.45]) {
         const blob = await at(quality);
-        if (blob && blob.size <= 240 * 1024) return blob; // the server takes up to 256 KB
+        if (blob && blob.size <= limit) return blob;
       }
       return null;
     })();
+  }
+
+  // Telegram for iOS shows the sender their shared photo from its thumbnail,
+  // and keeps whatever part of it had arrived when the message went out: a
+  // small one has arrived long before. 800 px wide still looks sharp in a bubble.
+  function thumbnail(canvas) {
+    const small = document.createElement("canvas");
+    small.width = 800;
+    small.height = Math.round(canvas.height * 800 / canvas.width);
+    const g = small.getContext("2d");
+    g.imageSmoothingQuality = "high";
+    g.drawImage(canvas, 0, 0, small.width, small.height);
+    return jpeg(small, 48 * 1024);
   }
 
   function showShare() {
@@ -2775,9 +2858,19 @@
       state.busy = true;
       buttons();
       try {
-        const blob = await jpeg(mode === "story" ? await drawCard(amounts, false) : canvas);
-        if (!blob) throw Object.assign(new Error("too big"), { code: "generic" });
-        const data = await api(`/api/share?mode=${mode}`, { method: "POST", raw: blob });
+        let raw;
+        if (mode === "message") {
+          // Photo and thumbnail in one request, together under the 256 KB limit.
+          const [photo, thumb] = await Promise.all([jpeg(canvas, 196 * 1024), thumbnail(canvas)]);
+          if (!photo || !thumb) throw Object.assign(new Error("too big"), { code: "generic" });
+          raw = new FormData();
+          raw.append("photo", photo, "card.jpg");
+          raw.append("thumb", thumb, "thumb.jpg");
+        } else {
+          raw = await jpeg(mode === "story" ? await drawCard(amounts, false) : canvas);
+          if (!raw) throw Object.assign(new Error("too big"), { code: "generic" });
+        }
+        const data = await api(`/api/share?mode=${mode}`, { method: "POST", raw });
         haptic.ok();
         if (data.prepared) call(() => tg.shareMessage(data.prepared), "8.0");
         else if (data.url) call(() => tg.shareToStory(data.url, { text: data.text.slice(0, 200) }), "7.8");
@@ -2862,7 +2955,7 @@
     main.set(null);
     secondary.set(null);
     const box = h("div", {}, h("section", { class: "hero" }, h("div", { class: "sk sk-hero" })));
-    mount([box]);
+    mount([h("h1", { class: "screen-title" }, t("stats")), box]);
     api("/api/admin/stats").then((data) => {
       if (state.screen === "admin" && app.contains(box)) box.replaceChildren(...adminView(data), broadcastSection());
     }).catch((e) => {
@@ -3024,13 +3117,16 @@
       // Note: what adding does to the position, or how to remove.
       let noteText = "";
       let perItem = b; // the price paid each that the break-even covers
-      if (!editing && held && q && b != null) {
-        perItem = held.buy_price == null ? null : (held.qty * held.buy_price + q * b) / (held.qty + q);
+      if (!editing && held && q) {
+        // A lot without a price paid leaves a known average as it is (so does the server).
+        perItem = held.buy_price == null ? null
+          : b == null ? held.buy_price : (held.qty * held.buy_price + q * b) / (held.qty + q);
       }
       if (editing) noteText = "";
       else if (held && q && bValid) {
         const total = held.qty + q;
-        if (b == null || held.buy_price == null) noteText = t("becomesNoPrice", { qty: total });
+        if (held.buy_price == null) noteText = t("becomesNoPrice", { qty: total });
+        else if (b == null) noteText = t("becomesKeep", { qty: total, price: money(held.buy_price) });
         else {
           const avg = Math.round(((held.qty * held.buy_price + q * b) / total) * 100) / 100;
           noteText = t("becomes", { qty: total, price: money(avg) });

@@ -144,7 +144,8 @@ These are independent of each other. Pick them from feedback.
 
 - **4.1 Share card (M) — implemented:** an image with the portfolio value, P&L and top items, shared to chats or Stories (`shareMessage` / `shareToStory`). It includes the bot's link, so it doubles as promotion. Showing amounts is opt-in.
   - **Built:** the app draws a 1080×1350 card on a canvas (there is no image library on the server) with the profit in percent and the top five, or the value and amounts when the user switches them on. It follows the folder shown.
-  - The JPEG is uploaded to `/api/share` and served from memory under an unguessable URL for 24 h, so Telegram can fetch it.
+  - The JPEG is uploaded to `/api/share` and served from memory under an unguessable URL for 24 h, so Telegram can fetch it. The server accepts only a whole JPEG (frame header and end marker, so a cut-off upload never reaches a chat), keeps a user's three newest pictures, and passes the picture's size to `savePreparedInlineMessage` so clients don't crop it.
+  - Messages get a separate 800×400 thumbnail (~45 KB). Telegram for iOS shows the sender their copy from `thumbnail_url` and, when the send is confirmed, moves that download into the real photo whether or not it finished; with the full picture as the thumbnail, a send before it arrived showed the sender a grey band (recipients were unaffected).
   - "Send to a chat" uses `savePreparedInlineMessage` + `shareMessage` (Bot API 8.0). When the client is older or Telegram refuses, the bot sends the picture to the user's chat to forward. The message links to `t.me/<bot>`, because shared messages can't carry a web_app button.
   - "Share to story" (`shareToStory`, mobile clients) is shown only where it works. Ten shares per user per 10 minutes.
 - **4.2 Folders / several accounts (M) — implemented:** group holdings, for example "Main", "Alt", "Long-term", with a folder filter on Home.

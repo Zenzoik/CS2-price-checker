@@ -12,8 +12,10 @@ import re
 import time
 from urllib.parse import parse_qsl
 
-# Init data is signed once, when the Mini App is opened.
-MAX_AGE = 24 * 3600
+# Init data is signed once, when the Mini App is opened, and anyone holding it
+# acts as that user until it expires: keep the window short. An app left open
+# longer asks to be reopened.
+MAX_AGE = 6 * 3600
 
 
 class AuthError(Exception):

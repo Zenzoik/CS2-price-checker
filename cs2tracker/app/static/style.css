@@ -15,6 +15,11 @@
   color-scheme: light dark;
 }
 :root[data-scheme="dark"] { --up: #4cd07d; --down: var(--tg-theme-destructive-text-color, #ff6b61); }
+/* Theme hint colours are about 3:1 on the card, too faint for 13-14px text:
+   lean them a quarter of the way towards the text colour (>= 4.5:1). */
+@supports (color: color-mix(in srgb, red, blue)) {
+  :root { --hint: color-mix(in srgb, var(--tg-theme-hint-color, #8e8e93) 75%, var(--tg-theme-text-color, #0f0f10)); }
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--fg); }
@@ -38,7 +43,13 @@ main {
 
 /* Summary --------------------------------------------------------------- */
 .hero { text-align: center; padding: 28px 0 24px; }
-.hero-value { font-size: clamp(30px, 10vw, 40px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+/* --chars (set by the app) shrinks long amounts to the room left beside the buttons. */
+.hero-value {
+  --room: calc(min(100vw, 560px) - 120px);
+  font-size: max(20px, min(clamp(30px, 10vw, 40px), calc(var(--room) / (var(--chars, 8) * 0.62))));
+  font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+}
+.overview-hero .hero-value { --room: calc(min(100vw, 560px) - 128px); }
 .hero-pnl { margin-top: 6px; font-size: 17px; font-weight: 600; }
 .hero-sub { margin-top: 4px; font-size: 14px; }
 
@@ -116,7 +127,7 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 .row:active { background: var(--skeleton); }
 .thumb { width: 44px; height: 44px; flex: none; object-fit: contain; border-radius: 10px; }
 .thumb.placeholder { background: var(--skeleton); }
-.row-main { flex: 1; min-width: 0; }
+.row-main { flex: 1; min-width: 40%; } /* the name stays readable next to a long amount */
 /* Two lines: wear, StatTrak and sticker finish are what tell CS items apart. */
 .row-title {
   font-weight: 500; overflow: hidden; overflow-wrap: anywhere;
@@ -125,7 +136,7 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 .row-sub { font-size: 14px; margin-top: 2px; }
 /* Shrinks before the name does: the name is what tells items apart. */
 .row-side { text-align: right; flex: 0 1 auto; min-width: 0; max-width: 46%; }
-.row-value { font-weight: 600; }
+.row-value { font-weight: 600; overflow-wrap: anywhere; }
 .row-pnl { font-size: 14px; margin-top: 2px; }
 .row-metrics { display: flex; flex-direction: column; align-items: flex-end; margin-top: 2px; white-space: nowrap; }
 .row-metrics .row-pnl { margin: 0; }
@@ -342,7 +353,7 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 
 /* Sales and the inventory check ------------------------------------------ */
 .realized { cursor: pointer; }
-.realized .more { color: var(--accent); }
+.realized .more { color: var(--accent); white-space: nowrap; }
 .sync-card { margin: 6px 0 12px; }
 .sync-card p { margin: 4px 0 12px; font-size: 14px; }
 .sync-part + .sync-part { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--sep); }
@@ -376,7 +387,10 @@ body.has-nav:has(.fallback-main:not([hidden])) main { padding-bottom: calc(160px
 }
 .broadcast-text {
   width: 100%; border: 0; border-radius: 10px; padding: 10px 12px; resize: vertical;
-  background: var(--bg); color: var(--fg); font: inherit; font-size: 15px;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 16px; /* >= 16px: iOS won't zoom */
 }
 .card.broadcast .offer-actions { margin-top: 12px; }
 .offer-yes:disabled { opacity: 0.5; cursor: default; }
+.link-btn:disabled { color: var(--hint); cursor: default; }
+.undo-sale { font-size: 14px; margin-top: 2px; }
+.import-title { margin-top: 4px; }

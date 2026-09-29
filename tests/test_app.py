@@ -91,6 +91,7 @@ def test_valid_init_data_returns_user():
     (init_data(token="999:other"), "bad signature"),
     (init_data().replace("Ann", "Bob"), "bad signature"),
     (init_data(auth_date=int(time.time()) - 2 * 86400), "expired"),
+    (init_data(auth_date=int(time.time()) - 7 * 3600), "expired"),  # a leaked header stops working soon
     ("auth_date=1&hash=%C3%A9", "bad signature"),  # non-ASCII hash used to crash compare_digest
     ("auth_date=1&hash=" + "A" * 64, "bad signature"),
 ])
@@ -564,6 +565,34 @@ def test_api_refuses_unknown_items(tmp_path):
     run_api(tmp_path, scenario)
 
 
+def test_steam_is_not_asked_again_about_an_unknown_item_right_away(tmp_path):
+    async def scenario(client, store, market):
+        for _ in range(3):
+            r = await client.get("/api/quote", params={"hash_name": "Typo"}, headers=auth())
+            assert r.status == 404
+        assert market.calls.count(("orderbook", "Typo")) == 1
+    run_api(tmp_path, scenario)
+
+
+def test_history_folder_must_be_a_plain_number(tmp_path):
+    async def scenario(client, store, market):
+        for folder in ("\u00b2", "9" * 30, "-1", "1e3"):  # "²" passes str.isdigit()
+            r = await client.get("/api/portfolio/history", params={"folder": folder}, headers=auth())
+            assert r.status == 400 and (await r.json())["error"] == "invalid"
+    run_api(tmp_path, scenario)
+
+
+def test_unexpected_errors_are_json_with_security_headers(tmp_path):
+    async def scenario(client, store, market):
+        def broken(*a, **kw):
+            raise RuntimeError("bug")
+        store.portfolio_history = broken
+        r = await client.get("/api/portfolio/history", headers=auth())
+        assert r.status == 500 and (await r.json())["error"] == "generic"
+        assert r.headers["Content-Security-Policy"] == CSP and r.headers["Cache-Control"] == "no-store"
+    run_api(tmp_path, scenario)
+
+
 def test_api_portfolio_limit(tmp_path):
     async def scenario(client, store, market):
         store.add_lot(42, "A", 1, 1)
@@ -638,6 +667,15 @@ def test_bot_ignores_groups_and_refuses_strangers():
     asyncio.run(bot.handle({"update_id": 2, "message": {
         "text": "/start", "chat": {"id": 2, "type": "private"}, "from": {"id": 2}}}))
     assert len(bot.sent) == 1 and "reply_markup" not in bot.sent[0][1]
+
+
+def test_strangers_are_not_counted_as_reachable(tmp_path):
+    bot = RecordingBot(settings(allowed_users=frozenset({1})))
+    bot.store = Store(tmp_path / "t.db", "UAH")
+    for user in (1, 2):
+        asyncio.run(bot.handle({"update_id": user, "message": {
+            "text": "/start", "chat": {"id": user, "type": "private"}, "from": {"id": user}}}))
+    assert bot.store.broadcast_audience() == 1 and not bot.store.prefs(2)["write_access"]
 
 
 # -- regressions from the adversarial review -------------------------------------
@@ -919,11 +957,14 @@ def test_migrates_v4_prices_without_losing_existing_quotes(tmp_path):
     assert upgraded.liquidity(CASE) == (450, 500, 2, 3)
 
 
-def test_unknown_price_paid_poisons_the_average_and_market_fills_in(tmp_path):
+def test_unknown_price_paid_keeps_a_known_average_and_market_fills_in(tmp_path):
     store = Store(tmp_path / "t.db", "UAH")
     store.add_lot(1, "A", 2, 100)
-    store.add_lot(1, "A", 1, None)
-    assert (store.holding(1, "A").qty, store.holding(1, "A").buy_cents) == (3, None)
+    store.add_lot(1, "A", 1, None)  # a known price paid is never thrown away
+    assert (store.holding(1, "A").qty, store.holding(1, "A").buy_cents) == (3, 100)
+    store.add_lot(1, "C", 2, None)
+    store.add_lot(1, "C", 1, 100)  # an unknown one can't be averaged into anything
+    assert (store.holding(1, "C").qty, store.holding(1, "C").buy_cents) == (3, None)
     assert store.import_items(1, [("B", 4, None, True), ("A", 9, None, False)]) == 1  # A already held
     assert store.holding(1, "B").buy_cents is None
     store.set_price("B", 1150)
@@ -1229,6 +1270,7 @@ def test_stats_counts_bot_only_users_and_new_per_day(tmp_path):
     store.log_event(2, "open", at=now)
     store.log_event(2, "import", 30, at=now)
     stats = store.stats(now=now)
+    assert stats == store.stats_readonly(now=now)  # the copy the admin screen gets, off the event loop
     assert stats["users"]["bot_only"] == 1 and stats["users"]["total"] == 2
     assert [(d["active"], d["new"]) for d in stats["daily"][-2:]] == [(1, 1), (1, 1)]
     assert stats["actions_7d"]["import"] == 30
